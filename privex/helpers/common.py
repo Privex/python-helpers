@@ -164,7 +164,7 @@ def is_false(v, chk_none: bool = True) -> bool:
     chk += [None, 'none', 'null', ''] if chk_none else []
     return v in chk
 
-def keyval_parse(line: str) -> List[Tuple[str, str]]:
+def parse_keyval(line: str) -> List[Tuple[str, str]]:
     """
     Parses a csv with key:value pairs such as:
 
@@ -183,29 +183,29 @@ def keyval_parse(line: str) -> List[Tuple[str, str]]:
     line = [tuple(a.split(':')) for a in line.split(',')] if line != '' else []
     return [(a.strip(), b.strip()) for a, b in line]
 
-def keyval_env(env_key: str, env_default = None) -> List[Tuple[str, str]]:
+def env_keyval(env_key: str, env_default = None) -> List[Tuple[str, str]]:
     """
     Parses "key:val,key:val" into a list of tuples [(key,val), (key,val)]
     
-    See :py:meth:`keyval_parse`
+    See :py:meth:`parse_keyval`
     """
     d = env(env_key)
-    return env_default if empty(d) else keyval_parse(d)
+    return env_default if empty(d) else parse_keyval(d)
 
-def csv_parse(line: str) -> List[str]:
+def parse_csv(line: str) -> List[str]:
     """
     Quick n' dirty parsing of a simple comma separated line, with automatic whitespace stripping
     of both the ``line`` itself, and the values within the commas.
 
     Example:
     
-        >>> csv_parse('  hello ,  world, test')
+        >>> parse_csv('  hello ,  world, test')
         ['hello', 'world', 'test']
     
     """
     return [x.strip() for x in line.strip().split(',')]
 
-def csv_env(env_key: str, env_default = None) -> List[str]:
+def env_csv(env_key: str, env_default = None) -> List[str]:
     """
     Quick n' dirty parsing of simple CSV formatted environment variables, with fallback
     to user specified ``env_default`` (defaults to None)
@@ -213,9 +213,9 @@ def csv_env(env_key: str, env_default = None) -> List[str]:
     Example:
 
         >>> os.setenv('EXAMPLE', '  hello ,  world, test')
-        >>> csv_env('EXAMPLE', [])
+        >>> env_csv('EXAMPLE', [])
         ['hello', 'world', 'test']
-        >>> csv_env('NONEXISTANT', [])
+        >>> env_csv('NONEXISTANT', [])
         []
     
     :param str env_key:     Environment var to attempt to load
@@ -223,7 +223,7 @@ def csv_env(env_key: str, env_default = None) -> List[str]:
     :return List[str] parsed_data: A list of str values parsed from the env var
     """
     d = env(env_key)
-    return env_default if empty(d) else csv_parse(d)
+    return env_default if empty(d) else parse_csv(d)
 
 
 class ErrHelpParser(argparse.ArgumentParser):

@@ -7,35 +7,35 @@ from privex.loghelper import LogHelper
 
 
 class TestParseHelpers(unittest.TestCase):
-    """Test the parsing functions csv_parse and keyval_parse"""
+    """Test the parsing functions parse_csv and parse_keyval"""
 
     def test_csv_spaced(self):
         """Test csv parsing with excess outer whitespace, and value whitespace"""
-        c = helpers.csv_parse('  valid  , spaced out,   csv  ')
+        c = helpers.parse_csv('  valid  , spaced out,   csv  ')
         self.assertListEqual(c, ['valid', 'spaced out', 'csv'])
     
     def test_csv_single(self):
         """Test that a single value still returns a list"""
-        self.assertListEqual(helpers.csv_parse('single'), ['single'])
+        self.assertListEqual(helpers.parse_csv('single'), ['single'])
     
     def test_kval_clean(self):
         """Test that a clean key:val csv is parsed correctly"""
         self.assertListEqual(
-            helpers.keyval_parse('John:Doe,Jane:Smith'), 
+            helpers.parse_keyval('John:Doe,Jane:Smith'), 
             [('John', 'Doe'), ('Jane', 'Smith')]
         )
     
     def test_kval_spaced(self):
         """Test key:val csv parsing with excess outer whitespace, and value whitespace"""
         self.assertListEqual(
-            helpers.keyval_parse(' John  : Doe  , Jane :  Smith '), 
+            helpers.parse_keyval(' John  : Doe  , Jane :  Smith '), 
             [('John', 'Doe'), ('Jane', 'Smith')]
         )
     
     def test_kval_single(self):
         """Test that a single value still returns a list"""
         self.assertListEqual(
-            helpers.keyval_parse('John:Doe'), 
+            helpers.parse_keyval('John:Doe'), 
             [('John', 'Doe')]
         )
 
