@@ -1,0 +1,11 @@
+*.log
+*.swp
+__pycache__
+.idea
+.vscode
+
+# PyPi build files
+build
+dist
+*.egg-info
+
