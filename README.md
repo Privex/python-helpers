@@ -57,7 +57,7 @@ python3 setup.py install
 
 # License
 
-**Python Log Helper** was created by [Privex Inc. of Belize City](https://www.privex.io), and licensed under the X11/MIT License.
+This Python module was created by [Privex Inc. of Belize City](https://www.privex.io), and licensed under the X11/MIT License.
 See the file [LICENSE](https://github.com/Privex/python-loghelper/blob/master/LICENSE) for the license text.
 
 **TL;DR; license:**
@@ -65,8 +65,6 @@ See the file [LICENSE](https://github.com/Privex/python-loghelper/blob/master/LI
 We offer no warranty. You can copy it, modify it, use it in projects with a different license, and even in commercial (paid for) software.
 
 The most important rule is - you **MUST** keep the original license text visible (see `LICENSE`) in any copies.
-
-
 
 # Example uses
 
