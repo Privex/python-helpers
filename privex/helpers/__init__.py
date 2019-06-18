@@ -1,4 +1,16 @@
 """
+Privex's Python Helpers - https://github.com/privex/python-helpers
+
+X11 / MIT License
+
+Submodules:
+
+  * common - Uncategorized functions and classes, including bool checks and data parsing
+  * decorators - Class / function decorators
+  * django - Django-specific functions/classes, only available if Django package is installed
+  * net - Network related functions/classes such as ASN name lookup, and IP version bool checks
+
+
     +===================================================+
     |                 © 2019 Privex Inc.                |
     |               https://www.privex.io               |

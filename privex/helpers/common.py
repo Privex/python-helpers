@@ -39,7 +39,8 @@ import string
 import argparse
 import logging
 import sys
-from typing import Sequence
+from os import getenv as env
+from typing import Sequence, List, Union, Tuple
 
 log = logging.getLogger(__name__)
 
@@ -97,14 +98,14 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
         ...     print('Var x is None, blank string, or an empty dict/list/iterable')
 
     :param v:    The variable to check if it's empty
-    :param zero: if zero=True, then return True if the variable is 0
+    :param zero: if zero=True, then return True if the variable is int 0 or str '0'
     :param itr:  if itr=True, then return True if the variable is ``[]``, ``{}``, or is an iterable and has 0 length
     :return bool is_blank: True if a variable is blank (``None``, ``''``, ``0``, ``[]`` etc.)
     :return bool is_blank: False if a variable has content (or couldn't be checked properly)
     """
 
     _check = [None, '']
-    if zero: _check.append(0)
+    if zero: _check += [0, '0']
     if v in _check: return True
     if itr:
         if v == [] or v == {}: return True
@@ -162,6 +163,67 @@ def is_false(v, chk_none: bool = True) -> bool:
     chk = [False, 'false', 'no', 'n', '0', 0]
     chk += [None, 'none', 'null', ''] if chk_none else []
     return v in chk
+
+def keyval_parse(line: str) -> List[Tuple[str, str]]:
+    """
+    Parses a csv with key:value pairs such as:
+
+        John Alex:Doe,Jane Sarah:Doe
+    
+    Into a list with tuple pairs (can be easily converted to a dict):
+
+        [
+            ('John Alex', 'Doe'), 
+            ('Jane Sarah', 'Doe')
+        ]
+    
+    :param str line: A string of key:value pairs separated by commas e.g. "John Alex:Doe,Jane Sarah:Doe"
+    :return List[Tuple[str,str]] parsed_data:  A list of (key, value) tuples that can easily be casted to a dict()
+    """
+    line = [tuple(a.split(':')) for a in line.split(',')] if line != '' else []
+    return [(a.strip(), b.strip()) for a, b in line]
+
+def keyval_env(env_key: str, env_default = None) -> List[Tuple[str, str]]:
+    """
+    Parses "key:val,key:val" into a list of tuples [(key,val), (key,val)]
+    
+    See :py:meth:`keyval_parse`
+    """
+    d = env(env_key)
+    return env_default if empty(d) else keyval_parse(d)
+
+def csv_parse(line: str) -> List[str]:
+    """
+    Quick n' dirty parsing of a simple comma separated line, with automatic whitespace stripping
+    of both the ``line`` itself, and the values within the commas.
+
+    Example:
+    
+        >>> csv_parse('  hello ,  world, test')
+        ['hello', 'world', 'test']
+    
+    """
+    return [x.strip() for x in line.strip().split(',')]
+
+def csv_env(env_key: str, env_default = None) -> List[str]:
+    """
+    Quick n' dirty parsing of simple CSV formatted environment variables, with fallback
+    to user specified ``env_default`` (defaults to None)
+
+    Example:
+
+        >>> os.setenv('EXAMPLE', '  hello ,  world, test')
+        >>> csv_env('EXAMPLE', [])
+        ['hello', 'world', 'test']
+        >>> csv_env('NONEXISTANT', [])
+        []
+    
+    :param str env_key:     Environment var to attempt to load
+    :param any env_default: Fallback value if the env var is empty / not set
+    :return List[str] parsed_data: A list of str values parsed from the env var
+    """
+    d = env(env_key)
+    return env_default if empty(d) else csv_parse(d)
 
 
 class ErrHelpParser(argparse.ArgumentParser):
