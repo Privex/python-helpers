@@ -55,10 +55,30 @@ pip3 install .
 python3 setup.py install
 ```
 
+# Documentation
+
+To build the documentation:
+
+```bash
+git clone https://github.com/Privex/python-helpers
+cd python-helpers/docs
+pip3 install -r requirements.txt
+
+# It's recommended to run make clean to ensure old HTML files are removed
+# `make html` generates the .html and static files in docs/build for production
+make clean && make html
+
+# After the files are built, you can live develop the docs using `make live`
+# then browse to http://127.0.0.1:8100/
+# If you have issues with content not showing up correctly, try make clean && make html
+# then run make live again.
+make live
+```
+
 # License
 
 This Python module was created by [Privex Inc. of Belize City](https://www.privex.io), and licensed under the X11/MIT License.
-See the file [LICENSE](https://github.com/Privex/python-loghelper/blob/master/LICENSE) for the license text.
+See the file [LICENSE](https://github.com/Privex/python-helpers/blob/master/LICENSE) for the license text.
 
 **TL;DR; license:**
 
