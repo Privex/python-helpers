@@ -59,7 +59,16 @@ python3 setup.py install
 
 # Documentation
 
-To build the documentation:
+[![Read the Documentation](https://read-the-docs-guidelines.readthedocs-hosted.com/_images/logo-wordmark-dark.png)](
+https://python-helpers.readthedocs.io/en/latest/)
+
+Full documentation for this project is available above (click the Read The Docs image), including:
+
+ - How to install the application and it's dependencies 
+ - How to use the various functions and classes
+ - General documentation of the modules and classes for contributors
+
+**To build the documentation:**
 
 ```bash
 git clone https://github.com/Privex/python-helpers
