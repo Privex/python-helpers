@@ -1,6 +1,6 @@
 # Privex's Python Helpers
 
-[![Documentation Status](https://readthedocs.org/projects/python-helpers/badge/?version=latest)](https://python-helpers.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/python-helpers/badge/?version=latest)](https://python-helpers.readthedocs.io/en/latest/?badge=latest) [![Build Status](https://travis-ci.com/Privex/python-helpers.svg?branch=master)](https://travis-ci.com/Privex/python-helpers)
 
 This small Python 3 module is comprised of various small functions and classes that were often
 copied and pasted across our projects.
