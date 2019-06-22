@@ -1,5 +1,7 @@
 # Privex's Python Helpers
 
+[![Documentation Status](https://readthedocs.org/projects/python-helpers/badge/?version=latest)](https://python-helpers.readthedocs.io/en/latest/?badge=latest)
+
 This small Python 3 module is comprised of various small functions and classes that were often
 copied and pasted across our projects.
 

@@ -1,0 +1,14 @@
+dist: bionic
+language: python
+python:
+  - "3.4"
+  - "3.5"
+  - "3.6"
+  - "3.7"
+  - "3.7-dev"
+  - "3.8-dev"
+  - "nightly"
+install:
+  - pip install -r docs/requirements.txt
+  - pip install .
+script: pytest tests.py
