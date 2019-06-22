@@ -1,38 +1,41 @@
 """
 Common functions and classes that don't fit into a specific category
 
-    +===================================================+
-    |                 © 2019 Privex Inc.                |
-    |               https://www.privex.io               |
-    +===================================================+
-    |                                                   |
-    |        Originally Developed by Privex Inc.        |
-    |                                                   |
-    |        Core Developer(s):                         |
-    |                                                   |
-    |          (+)  Chris (@someguy123) [Privex]        |
-    |          (+)  Kale (@kryogenic) [Privex]          |
-    |                                                   |
-    +===================================================+
+**Copyright**::
 
-Copyright 2019     Privex Inc.   ( https://www.privex.io )
+        +===================================================+
+        |                 © 2019 Privex Inc.                |
+        |               https://www.privex.io               |
+        +===================================================+
+        |                                                   |
+        |        Originally Developed by Privex Inc.        |
+        |                                                   |
+        |        Core Developer(s):                         |
+        |                                                   |
+        |          (+)  Chris (@someguy123) [Privex]        |
+        |          (+)  Kale (@kryogenic) [Privex]          |
+        |                                                   |
+        +===================================================+
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of 
-this software and associated documentation files (the "Software"), to deal in 
-the Software without restriction, including without limitation the rights to use, 
-copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
-Software, and to permit persons to whom the Software is furnished to do so, 
-subject to the following conditions:
+    Copyright 2019     Privex Inc.   ( https://www.privex.io )
 
-The above copyright notice and this permission notice shall be included in all 
-copies or substantial portions of the Software.
+    Permission is hereby granted, free of charge, to any person obtaining a copy of 
+    this software and associated documentation files (the "Software"), to deal in 
+    the Software without restriction, including without limitation the rights to use, 
+    copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
+    Software, and to permit persons to whom the Software is furnished to do so, 
+    subject to the following conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    The above copyright notice and this permission notice shall be included in all 
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+    PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
+    OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 """
 import random
 import string
@@ -166,18 +169,20 @@ def is_false(v, chk_none: bool = True) -> bool:
 
 def parse_keyval(line: str) -> List[Tuple[str, str]]:
     """
-    Parses a csv with key:value pairs such as:
+    Parses a csv with key:value pairs such as::
 
         John Alex:Doe,Jane Sarah:Doe
     
-    Into a list with tuple pairs (can be easily converted to a dict):
+
+    Into a list with tuple pairs (can be easily converted to a dict)::
 
         [
             ('John Alex', 'Doe'), 
             ('Jane Sarah', 'Doe')
         ]
-    
-    :param str line: A string of key:value pairs separated by commas e.g. "John Alex:Doe,Jane Sarah:Doe"
+
+
+    :param str line: A string of key:value pairs separated by commas e.g. ``John Alex:Doe,Jane Sarah:Doe``
     :return List[Tuple[str,str]] parsed_data:  A list of (key, value) tuples that can easily be casted to a dict()
     """
     line = [tuple(a.split(':')) for a in line.split(',')] if line != '' else []
@@ -185,7 +190,7 @@ def parse_keyval(line: str) -> List[Tuple[str, str]]:
 
 def env_keyval(env_key: str, env_default = None) -> List[Tuple[str, str]]:
     """
-    Parses "key:val,key:val" into a list of tuples [(key,val), (key,val)]
+    Parses ``key:val,key:val`` into a list of tuples [(key,val), (key,val)]
     
     See :py:meth:`parse_keyval`
     """

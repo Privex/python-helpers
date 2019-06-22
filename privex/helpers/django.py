@@ -1,51 +1,60 @@
 """
-This module file contains Django-specific helper functions, to help save time
-when developing with the Django framework.
-
-handle_error              - Redirects normal web page requests with a session error, 
-                            outputs JSON with a status code for API queries.
-is_database_synchronized  - Check if all migrations have been ran before running code.
-model_to_dict             - Extract an individual Django model instance into a dict (with display names)
-to_json                   - Convert a model Queryset into a plain string JSON array with display names
+This module file contains Django-specific helper functions, to help save time when 
+developing with the Django framework.
 
 
-    +===================================================+
-    |                 © 2019 Privex Inc.                |
-    |               https://www.privex.io               |
-    +===================================================+
-    |                                                   |
-    |        Originally Developed by Privex Inc.        |
-    |                                                   |
-    |        Core Developer(s):                         |
-    |                                                   |
-    |          (+)  Chris (@someguy123) [Privex]        |
-    |          (+)  Kale (@kryogenic) [Privex]          |
-    |                                                   |
-    +===================================================+
+ * handle_error              - Redirects normal web page requests with a session error, outputs JSON with a 
+   status code for API queries.
 
-Copyright 2019     Privex Inc.   ( https://www.privex.io )
+ * is_database_synchronized  - Check if all migrations have been ran before running code.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of 
-this software and associated documentation files (the "Software"), to deal in 
-the Software without restriction, including without limitation the rights to use, 
-copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
-Software, and to permit persons to whom the Software is furnished to do so, 
-subject to the following conditions:
+ * model_to_dict             - Extract an individual Django model instance into a dict (with display names)
+ 
+ * to_json                   - Convert a model Queryset into a plain string JSON array with display names
 
-The above copyright notice and this permission notice shall be included in all 
-copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+**Copyright**::
+
+        +===================================================+
+        |                 © 2019 Privex Inc.                |
+        |               https://www.privex.io               |
+        +===================================================+
+        |                                                   |
+        |        Originally Developed by Privex Inc.        |
+        |                                                   |
+        |        Core Developer(s):                         |
+        |                                                   |
+        |          (+)  Chris (@someguy123) [Privex]        |
+        |          (+)  Kale (@kryogenic) [Privex]          |
+        |                                                   |
+        +===================================================+
+
+    Copyright 2019     Privex Inc.   ( https://www.privex.io )
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of 
+    this software and associated documentation files (the "Software"), to deal in 
+    the Software without restriction, including without limitation the rights to use, 
+    copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
+    Software, and to permit persons to whom the Software is furnished to do so, 
+    subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all 
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
+    PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
+    OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
+    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
 """
 import json
 from django.contrib import messages
 from django.contrib.messages import add_message
-from django.http import JsonResponse, HttpRequest, HttpResponseRedirectBase
+from django.http import JsonResponse, HttpRequest
+from django.http.response import HttpResponseRedirectBase
 from django.db.migrations.executor import MigrationExecutor
 from django.db import connections
 

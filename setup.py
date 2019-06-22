@@ -35,14 +35,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 from setuptools import setup, find_packages
+from os.path import join, dirname, abspath
 
-with open("README.md", "r") as fh:
+BASE_DIR = dirname(abspath(__file__))
+
+with open(join(BASE_DIR, "README.md"), "r") as fh:
     long_description = fh.read()
 
 setup(
     name='privex_helpers',
 
-    version='1.0.2',
+    version='1.1.0',
 
     description='A variety of helper functions and classes, useful for many different projects',
     long_description=long_description,

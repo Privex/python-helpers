@@ -1,5 +1,6 @@
 """
-This module folder is just used for structuring ``helpers`` under the ``privex`` root package.
+Exception classes used either by our helpers, or just generic exception names which are missing from
+the standard base exceptions in Python, and are commonly used across our projects.
 
 **Copyright**::
 
@@ -38,5 +39,41 @@ This module folder is just used for structuring ``helpers`` under the ``privex``
 
 """
 
-__path__ = __import__('pkgutil').extend_path(__path__, __name__)
+class PrivexException(Exception):
+    """Base exception for all custom Privex exceptions"""
+    pass
 
+
+#####
+# Exceptions related to DNS (domain, or individual record errors)
+#####
+
+class BaseDNSException(PrivexException):
+    """Base exception for DNS-related exceptions"""
+    pass
+
+class BoundaryException(BaseDNSException):
+    """
+    Thrown when the v4/v6 address boundary for a reverse DNS record is invalid.
+    
+    An "address boundary" is the minimum amount of bits that defines a character in a reverse DNS domain 
+    (i.e. those ending in in-addr/ip6.arpa):
+
+         - IPv6 uses "nibbles" of 4 bits for each individual character in a standard 128-bit address
+         - IPv4 uses "octets" of 8 bits, which represent 0-255 in each of the 4 "blocks" within an IPv4 address
+    
+    This means the minimum and maximum boundaries for IPv4 and IPv6 are as such:
+
+        IPv6 - Minimum boundary: 4 bits (``*.f.ip6.arpa``), Maximum boundary: 128 bits (rDNS for a single address, i.e. a /128)
+        IPv4 - Minimum boundary: 8 bits (``x.x.x.127.in-addr.arpa``), Maximum boundary: 32 bits (``1.0.0.127.in-addr.arpa``)
+    
+    """
+    pass
+
+class DomainNotFound(BaseDNSException):
+    """Thrown when a (sub)domain or it's parent(s) could not be found"""
+    pass
+
+class InvalidDNSRecord(BaseDNSException):
+    """Thrown when a passed DNS record is not valid"""
+    pass
