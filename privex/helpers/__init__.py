@@ -63,11 +63,19 @@ log = _setup_logging()
 
 name = 'helpers'
 
+class ImproperlyConfigured(Exception):
+    """Placeholder in-case this fails to import from django.core.exceptions"""
+    pass
+
 # Only import the Django functions if Django is actually installed
 try:
     import django
+    from django.core.exceptions import ImproperlyConfigured
     from privex.helpers.django import *
 except ImportError:
+    log.debug('privex.helpers __init__ failed to import "django", not loading django helpers')
+    pass
+except ImproperlyConfigured:
     log.debug('privex.helpers __init__ failed to import "django", not loading django helpers')
     pass
 
