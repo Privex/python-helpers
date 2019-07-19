@@ -59,8 +59,8 @@ def random_str(size:int = 50, chars: Sequence = SAFE_CHARS) -> str:
     SystemRandom class to provide relatively secure randomness from the OS. (On Linux, uses /dev/urandom)
 
     By default, uses the character set :py:attr:`.SAFE_CHARS` which contains letters a-z / A-Z and numbers 2-9
-    with commonly misread characters removed (such as 1, l, L, 0 and o). Pass :py:attr:`.ALPHANUM` as `chars` if 
-    you needthe full set of upper/lowercase + numbers.
+    with commonly misread characters removed (such as ``1``, ``l``, ``L``, ``0`` and ``o``). Pass 
+    :py:attr:`.ALPHANUM` as `chars` if you need the full set of upper/lowercase + numbers.
 
     Usage:
 
@@ -86,10 +86,10 @@ def random_str(size:int = 50, chars: Sequence = SAFE_CHARS) -> str:
 
 def empty(v, zero: bool = False, itr: bool = False) -> bool:
     """
-    Quickly check if a variable is empty or not. By default only '' and None are checked, use `itr` and `zero` to
+    Quickly check if a variable is empty or not. By default only '' and None are checked, use ``itr`` and ``zero`` to
     test for empty iterable's and zeroed variables.
 
-    Returns True if a variable is None or '', returns False if variable passes the tests
+    Returns ``True`` if a variable is ``None`` or ``''``, returns ``False`` if variable passes the tests
 
     Example usage:
 
@@ -101,10 +101,10 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
         ...     print('Var x is None, blank string, or an empty dict/list/iterable')
 
     :param v:    The variable to check if it's empty
-    :param zero: if zero=True, then return True if the variable is int 0 or str '0'
-    :param itr:  if itr=True, then return True if the variable is ``[]``, ``{}``, or is an iterable and has 0 length
-    :return bool is_blank: True if a variable is blank (``None``, ``''``, ``0``, ``[]`` etc.)
-    :return bool is_blank: False if a variable has content (or couldn't be checked properly)
+    :param zero: if ``zero=True``, then return ``True`` if the variable is int ``0`` or str ``'0'``
+    :param itr:  if ``itr=True``, then return ``True`` if the variable is ``[]``, ``{}``, or is an iterable and has 0 length
+    :return bool is_blank: ``True`` if a variable is blank (``None``, ``''``, ``0``, ``[]`` etc.)
+    :return bool is_blank: ``False`` if a variable has content (or couldn't be checked properly)
     """
 
     _check = [None, '']
@@ -118,8 +118,11 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
 
 def is_true(v) -> bool:
     """
-    Check if a given bool/str/int value is some form of True:
-    boolean: True // string: 'true', 'yes', 'y', '1' // integer: 1
+    Check if a given bool/str/int value is some form of ``True``:
+    
+        * **bool**: ``True`` 
+        * **str**: ``'true'``, ``'yes'``, ``'y'``, ``'1'``
+        * **int**: ``1``
     
     (note: strings are automatically .lower()'d)
 
@@ -131,7 +134,7 @@ def is_true(v) -> bool:
     False
 
     :param Any v:          The value to check for truthfulness
-    :return bool is_true:  True if the value appears to be truthy, otherwise False.
+    :return bool is_true:  ``True`` if the value appears to be truthy, otherwise ``False``.
     """
     v = v.lower() if type(v) is str else v
     return v in [True, 'true', 'yes', 'y', '1', 1]
@@ -141,9 +144,11 @@ def is_false(v, chk_none: bool = True) -> bool:
     **Warning:** Unless you specifically need to verify a value is Falsey, it's usually safer to 
     check for truth :py:func:`.is_true` and invert the result, i.e. ``if not is_true(v)``
     
-    Check if a given bool/str/int value is some form of False::
+    Check if a given bool/str/int value is some form of ``False``:
 
-        boolean: False // string: 'false', 'no', 'n', '0' // integer: 0
+        * **bool**: ``False``
+        * **str**: ``'false'``, ``'no'``, ``'n'``, ``'0'``
+        * **int**: ``0``
 
     If ``chk_none`` is True (default), will also consider the below values to be Falsey::
 
@@ -159,15 +164,15 @@ def is_false(v, chk_none: bool = True) -> bool:
     False
 
     :param Any v:          The value to check for falseyness
-    :param bool chk_none:  If True, treat None/'none'/'null' as Falsey (default True)
-    :return bool is_False: True if the value appears to be falsey, otherwise False.
+    :param bool chk_none:  If ``True``, treat ``None``/``'none'``/``'null'`` as Falsey (default ``True``)
+    :return bool is_False: ``True`` if the value appears to be falsey, otherwise ``False``.
     """
     v = v.lower() if type(v) is str else v
     chk = [False, 'false', 'no', 'n', '0', 0]
     chk += [None, 'none', 'null', ''] if chk_none else []
     return v in chk
 
-def parse_keyval(line: str) -> List[Tuple[str, str]]:
+def parse_keyval(line: str, valsplit: str = ':', csvsplit=',') -> List[Tuple[str, str]]:
     """
     Parses a csv with key:value pairs such as::
 
@@ -182,22 +187,20 @@ def parse_keyval(line: str) -> List[Tuple[str, str]]:
         ]
 
 
+    By default, uses a colons ``:`` to split the key/value, and commas ``,`` to terminate the end of 
+    each keyval pair. This can be overridden by changing valsplit/csvsplit.
+
     :param str line: A string of key:value pairs separated by commas e.g. ``John Alex:Doe,Jane Sarah:Doe``
+    :param str valsplit: A character (or several) used to split the key from the value (default: colon ``:``)
+    :param str csvsplit: A character (or several) used to terminate each keyval pair (default: comma ``,``)
     :return List[Tuple[str,str]] parsed_data:  A list of (key, value) tuples that can easily be casted to a dict()
     """
-    line = [tuple(a.split(':')) for a in line.split(',')] if line != '' else []
+    cs, vs = csvsplit, valsplit
+    line = [tuple(a.split(vs)) for a in line.split(cs)] if line != '' else []
     return [(a.strip(), b.strip()) for a, b in line]
 
-def env_keyval(env_key: str, env_default = None) -> List[Tuple[str, str]]:
-    """
-    Parses ``key:val,key:val`` into a list of tuples [(key,val), (key,val)]
-    
-    See :py:meth:`parse_keyval`
-    """
-    d = env(env_key)
-    return env_default if empty(d) else parse_keyval(d)
 
-def parse_csv(line: str) -> List[str]:
+def parse_csv(line: str, csvsplit: str = ',') -> List[str]:
     """
     Quick n' dirty parsing of a simple comma separated line, with automatic whitespace stripping
     of both the ``line`` itself, and the values within the commas.
@@ -206,11 +209,14 @@ def parse_csv(line: str) -> List[str]:
     
         >>> parse_csv('  hello ,  world, test')
         ['hello', 'world', 'test']
+        >>> parse_csv(' world  ;   test   ; example', csvsplit=';')
+        ['world', 'test', 'example']
     
+    :param str csvsplit: A character (or several) used to terminate each value in the list. Default: comma ``,``
     """
-    return [x.strip() for x in line.strip().split(',')]
+    return [x.strip() for x in line.strip().split(csvsplit)]
 
-def env_csv(env_key: str, env_default = None) -> List[str]:
+def env_csv(env_key: str, env_default = None, csvsplit=',') -> List[str]:
     """
     Quick n' dirty parsing of simple CSV formatted environment variables, with fallback
     to user specified ``env_default`` (defaults to None)
@@ -224,11 +230,46 @@ def env_csv(env_key: str, env_default = None) -> List[str]:
         []
     
     :param str env_key:     Environment var to attempt to load
-    :param any env_default: Fallback value if the env var is empty / not set
+    :param any env_default: Fallback value if the env var is empty / not set (Default: None)
+    :param str csvsplit: A character (or several) used to terminate each value in the list. Default: comma ``,``
     :return List[str] parsed_data: A list of str values parsed from the env var
     """
     d = env(env_key)
-    return env_default if empty(d) else parse_csv(d)
+    return env_default if empty(d) else parse_csv(d, csvsplit=csvsplit)
+
+def env_keyval(env_key: str, env_default = None, valsplit=':', csvsplit=',') -> List[Tuple[str, str]]:
+    """
+    Parses an environment variable containing ``key:val,key:val`` into a list of tuples [(key,val), (key,val)]
+    
+    See :py:meth:`parse_keyval`
+
+    :param str env_key:     Environment var to attempt to load
+    :param any env_default: Fallback value if the env var is empty / not set (Default: None)
+    :param str valsplit: A character (or several) used to split the key from the value (default: colon ``:``)
+    :param str csvsplit: A character (or several) used to terminate each keyval pair (default: comma ``,``)
+    """
+    d = env(env_key)
+    return env_default if empty(d) else parse_keyval(d, valsplit=valsplit, csvsplit=csvsplit)
+
+def env_bool(env_key: str, env_default = None) -> Union[bool, None]:
+    """
+    Obtains an environment variable ``env_key``, if it's empty or not set, ``env_default`` will be returned.
+    Otherwise, it will be converted into a boolean using :py:func:`.is_true`
+
+    Example:
+
+        >>> os.environ['HELLO_WORLD'] = '1'
+        >>> env_bool('HELLO_WORLD')
+        True
+        >>> env_bool('HELLO_NOEXIST')
+        None
+        >>> env_bool('HELLO_NOEXIST', 'error')
+        'error'
+    
+    :param str env_key:     Environment var to attempt to load
+    :param any env_default: Fallback value if the env var is empty / not set (Default: None)
+    """
+    return env_default if empty(env(env_key)) else is_true(env(env_key))
 
 
 class ErrHelpParser(argparse.ArgumentParser):

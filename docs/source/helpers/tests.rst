@@ -18,6 +18,7 @@ tests
       TestBoolHelpers
       TestIPReverseDNS
       TestParseHelpers
+      PrivexBaseCase
    
    
 
