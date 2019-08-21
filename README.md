@@ -180,6 +180,8 @@ Optional requirements (just `pip3 install` them depending on the helpers you req
 Django
 # For certain DNS dependant helpers in privex.helpers.net
 dnspython>=1.16.0
+# For helpers such as the r_cache decorator which is dependent on Redis
+redis>=3.3.8
 ```
 
 # Contributing

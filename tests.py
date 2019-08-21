@@ -81,7 +81,8 @@ import os
 from collections import namedtuple
 from privex import helpers
 from privex.loghelper import LogHelper
-from privex.helpers import ip_to_rdns, BoundaryException
+from privex.helpers import ip_to_rdns, BoundaryException, plugin, r_cache, random_str
+
 
 class EmptyIter(object):
     """A mock iterable object with zero length for testing empty()"""
@@ -337,6 +338,60 @@ class TestIPReverseDNS(PrivexBaseCase):
         """Raise if IPv6 boundary is too short"""
         with self.assertRaises(BoundaryException):
             ip_to_rdns(VALID_V6_1, boundary=True, v6_boundary=0)
+
+
+class TestRedisCache(PrivexBaseCase):
+    """
+    Unit tests which verify that the decorator :py:func:`privex.helpers.decorators.r_test` caches correctly, and
+    also verifies dynamic cache key generation works as expected.
+    """
+    def setUp(self):
+        if not plugin.HAS_REDIS:
+            print('The package "redis" is not installed, skipping Redis dependent tests.')
+            self.tearDown()
+        # import redis
+        self.redis = plugin.get_redis()
+
+    def test_rcache_rand(self):
+        """Decorate random string function with r_cache - test that two calls return the same string"""
+        @r_cache('pxhelpers_test_rand')
+        def r_test():
+            return random_str()
+
+        val1 = r_test()
+        val2 = r_test()
+        self.assertEqual(val1, val2, msg=f"'{repr(val1)}' == '{repr(val2)}'")
+
+    def test_rcache_rand_dynamic(self):
+        """Decorate random string function with r_cache and use format_args for dynamic cache string testing"""
+
+        @r_cache('pxhelpers_rand_dyn:{}:{}', format_args=[0, 1, 'x', 'y'])
+        def r_test(x, y):
+            return random_str()
+
+        a, b, c, d = r_test(1, 1), r_test(1, 2), r_test(x=1, y=2), r_test(y=2, x=1)
+        e, f, g, h = r_test(1, 1), r_test(1, 2), r_test(x=1, y=2), r_test(y=2, x=1)
+
+        # Test random cached strings using 1,1 and 1,2 as positional args
+        self.assertEqual(a, e, msg="r_test(1,1) == r_test(1,1)")
+        self.assertEqual(b, f, msg="r_test(1,2) == r_test(1,2)")
+        # Test positional arg cache is equivalent to kwarg cache
+        self.assertEqual(b, c, msg="r_test(1,2) == r_test(y=1,x=2)")
+        self.assertEqual(b, g, msg="r_test(1,2) == r_test(x=1,y=2)")
+        self.assertEqual(b, d, msg="r_test(1,2) == r_test(y=2,x=1)")
+        # Test kwarg cache is equivalent to inverted kwarg cache
+        self.assertEqual(h, c, msg="r_test(y=2, x=1) == r_test(x=1, y=2)")
+        # To be sure they aren't all producing the same string, make sure that 1,2 and 1,1
+        # (positional and kwarg) are not equal
+        self.assertNotEqual(a, b, msg="r_test(1,1) != r_test(1,2)")
+        self.assertNotEqual(g, a, msg="r_test(x=1, y=2) != r_test(1,1)")
+
+    def tearDown(self):
+        """Remove any Redis keys used during test, to avoid failure on re-run"""
+        self.redis.delete('pxhelpers_test_rand', 'pxhelpers_rand_dyn:1:1', 'pxhelpers_rand_dyn:1:2',
+                          'pxhelpers_rand_dyn:2:1')
+        super(TestRedisCache, self).tearDown()
+
 
 if __name__ == '__main__':
     unittest.main()

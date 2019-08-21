@@ -52,6 +52,7 @@ X11 / MIT License
 import logging
 from privex.loghelper import LogHelper
 
+
 # Set up logging for the entire module ``privex.helpers`` . Since this is a package, we don't add any
 # console or file logging handlers, we purely just set our minimum logging level to WARNING to avoid
 # spamming the logs of any application importing it.
@@ -59,17 +60,20 @@ def _setup_logging(level=logging.WARNING):
     lh = LogHelper(__name__, level=level)
     return lh.get_logger()
 
-log = _setup_logging()
 
+log = _setup_logging()
 name = 'helpers'
+
 
 class ImproperlyConfigured(Exception):
     """Placeholder in-case this fails to import from django.core.exceptions"""
     pass
 
+
 class AppRegistryNotReady(Exception):
     """Placeholder in-case this fails to import from django.core.exceptions"""
     pass
+
 
 # Only import the Django functions if Django is actually installed
 try:
@@ -91,3 +95,4 @@ from privex.helpers.common import *
 from privex.helpers.decorators import *
 from privex.helpers.net import *
 from privex.helpers.exceptions import *
+from privex.helpers.plugin import *
