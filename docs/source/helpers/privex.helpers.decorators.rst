@@ -11,6 +11,14 @@ privex.helpers.decorators
       :toctree: decorators
       
       retry_on_err
+      r_cache
+
+   .. rubric:: Classes
+
+   .. autosummary::
+      :toctree: decorators
+
+      FormatOpt
    
    
 

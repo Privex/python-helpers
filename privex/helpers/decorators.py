@@ -166,7 +166,7 @@ def r_cache(cache_key, cache_time=300, format_args: list = None, format_opt: FO 
     To bypass the cache, pass kwarg ``r_cache=False`` to the wrapped function. To override the cache key on demand,
     pass ``r_cache_key='mykey'`` to the wrapped function.
 
-    **Example usage::**
+    **Example usage**:
 
         >>> from privex.helpers import r_cache
         >>>
@@ -190,7 +190,7 @@ def r_cache(cache_key, cache_time=300, format_args: list = None, format_opt: FO 
         >>> my_func(r_cache=False)
         done
 
-    **Using a dynamic ``cache_key``::**
+    **Using a dynamic cache_key**:
 
         **Simplest and most reliable - pass ``r_cache_key`` as an additional kwarg**
 
@@ -203,11 +203,9 @@ def r_cache(cache_key, cache_time=300, format_args: list = None, format_opt: FO 
 
         **Alternative, but finnicky - using ``format_args`` to integrate with existing code**
 
+        If you can't change how your existing function/method is called, then you can use the ``format_args`` feature.
 
-        Alternatively, if you can't change how your existing function/method is called, then you can use the
-        ``format_args`` feature.
-
-        NOTE: Unless you're forcing the usage of kwargs with a function/method, it's strongly recommended that you
+        **NOTE:** Unless you're forcing the usage of kwargs with a function/method, it's strongly recommended that you
         keep ``force_pos`` enabled, and specify both the positional argument ID, and the kwarg name.
 
         Basic Example:
@@ -221,7 +219,8 @@ def r_cache(cache_key, cache_time=300, format_args: list = None, format_opt: FO 
         ...     return 'x + y = {}'.format(x + y)
         >>>
 
-        Using positional arguments, we can see from the debug log that it's formatting the {}:{} in the key with ``x:y``
+        Using positional arguments, we can see from the debug log that it's formatting the ``{}:{}`` in the key
+        with ``x:y``
 
         >>> some_func(1, 2)
         2019-08-21 06:58:29,823 lg  DEBUG    Trying to load "some_cache:1:2" from Redis cache
@@ -239,7 +238,7 @@ def r_cache(cache_key, cache_time=300, format_args: list = None, format_opt: FO 
         2019-08-21 06:58:41,752 lg  DEBUG    Trying to load "some_cache:1:2" from Redis cache
         'x + y = 3'
 
-        Be warned that the default format option POS_AUTO will make kwargs' values be specified in the same order as
+        Be warned that the default format option ``POS_AUTO`` will make kwargs' values be specified in the same order as
         they were listed in ``format_args``
 
         >>> some_func(y=1, x=2)   # ``format_args`` has the kwargs in the order ``['x', 'y']`` thus ``.format(x,y)``
@@ -249,8 +248,8 @@ def r_cache(cache_key, cache_time=300, format_args: list = None, format_opt: FO 
 
     :param bool whitelist: (default: ``True``) If True, only use specified arg positions / kwarg keys when formatting
                            ``cache_key`` placeholders. Otherwise, trust whatever args/kwargs were passed to the func.
-    :param FormatOpt format_opt: (default: :py:attr:`.FO.POS_AUTO`) "Format option" - how should args/kwargs be used
-                                 when filling placeholders in the ``cache_key`` (see comments on FormatOption)
+    :param FormatOpt format_opt: (default: :py:attr:`.FormatOpt.POS_AUTO`) "Format option" - how should args/kwargs be
+                                 used when filling placeholders in the ``cache_key`` (see comments on FormatOption)
     :param list format_args: A list of positional arguments numbers (e.g. ``[0, 1, 2]``) and/or kwargs
                              ``['x', 'y', 'z']`` that should be used to format the `cache_key`
     :param str cache_key: The redis key to store the cached data into, e.g. `mydata`

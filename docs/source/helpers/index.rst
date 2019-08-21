@@ -9,6 +9,8 @@ Code Docs for each helper module
     privex.helpers.django
     privex.helpers.exceptions
     privex.helpers.net
+    privex.helpers.plugin
+    privex.helpers.settings
 
 Unit Tests
 ==========

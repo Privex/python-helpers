@@ -46,5 +46,10 @@ To override settings from your app::
 """
 
 REDIS_HOST = 'localhost'
+"""Hostname / IP address where redis-server is running on"""
+
 REDIS_PORT = 6379
+"""Port number that Redis is running on at ``REDIS_HOST``"""
+
 REDIS_DB = 0
+"""Redis database to use (number)"""
