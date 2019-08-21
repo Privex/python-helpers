@@ -45,7 +45,7 @@ with open(join(BASE_DIR, "README.md"), "r") as fh:
 setup(
     name='privex_helpers',
 
-    version='1.2.1',
+    version='1.2.2',
 
     description='A variety of helper functions and classes, useful for many different projects',
     long_description=long_description,

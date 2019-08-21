@@ -386,6 +386,21 @@ class TestRedisCache(PrivexBaseCase):
         self.assertNotEqual(a, b, msg="r_test(1,1) != r_test(1,2)")
         self.assertNotEqual(g, a, msg="r_test(x=1, y=2) != r_test(1,1)")
 
+    def test_rcache_callable(self):
+        """Decorate random string function - use a lambda callable to determine a cache key"""
+        @r_cache(lambda x, y: f"{x}")
+        def r_test(x, y):
+            return random_str()
+
+        a, b = r_test(1, 1), r_test(1, 1)
+        c, d = r_test(2, 1), r_test(1, 2)
+
+        # If the first argument is the same, then we'll get the same result. The second argument is ignored.
+        self.assertEqual(a, b, msg='r_test(1,1) == r_test(1,1)')
+        self.assertEqual(a, d, msg='r_test(1,1) == r_test(1,2)')
+        # If the first argument is different (1 and 2), then we should get a different result.
+        self.assertNotEqual(a, c, msg='r_test(1,1) != r_test(2,1)')
+
     def tearDown(self):
         """Remove any Redis keys used during test, to avoid failure on re-run"""
         self.redis.delete('pxhelpers_test_rand', 'pxhelpers_rand_dyn:1:1', 'pxhelpers_rand_dyn:1:2',

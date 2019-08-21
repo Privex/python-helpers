@@ -42,7 +42,7 @@ import logging
 import pickle
 from enum import Enum
 from time import sleep
-from typing import Any
+from typing import Any, Union
 
 from privex.helpers import plugin
 from privex.helpers.common import empty
@@ -160,7 +160,8 @@ if plugin.HAS_REDIS:
     FO = FormatOpt
 
 
-    def r_cache(cache_key, cache_time=300, format_args: list = None, format_opt: FO = FO.POS_AUTO, **opts) -> Any:
+    def r_cache(cache_key: Union[str, callable], cache_time=300, format_args: list = None,
+                format_opt: FO = FO.POS_AUTO, **opts) -> Any:
         """
         This is a decorator which caches the result of the wrapped function into Redis using the key ``cache_key``
         and with an expiry of ``cache_time`` seconds.
@@ -206,7 +207,29 @@ if plugin.HAS_REDIS:
 
             >>> my_func(r_cache_key='somekey')    # Use the redis key 'somekey' when caching data for this function
 
-            **Alternative, but finnicky - using ``format_args`` to integrate with existing code**
+            **Option 2. Pass a callable which takes the same arguments as the wrapped function**
+
+            In the example below, ``who`` takes two arguments: ``name`` and ``title`` - we then pass the function
+            ``make_key`` which takes the same arguments - ``r_cache`` will detect that the cache key is a function
+            and call it with the same ``(*args, **kwargs)`` passed to the wrapped function.
+
+            >>> from privex.helpers import r_cache
+            >>>
+            >>> def make_key(name, title):
+            ...     return f"mycache:{name}"
+            ...
+            >>> @r_cache(make_key)
+            ... def who(name, title):
+            ...     return "Their name is {title} {name}"
+            ...
+
+            We can also obtain the same effect with a ``lambda`` callable defined directly inside of the cache_key.
+
+            >>> @r_cache(lambda name,title: f"mycache:{name}")
+            ... def who(name, title):
+            ...     return "Their name is {title} {name}"
+
+            **Option 3. Can be finnicky - using ``format_args`` to integrate with existing code**
 
             If you can't change how your existing function/method is called, then you can use the ``format_args`` feature.
 
@@ -307,9 +330,11 @@ if plugin.HAS_REDIS:
                 if 'r_cache' in kwargs: del kwargs['r_cache']
                 if 'r_cache_key' in kwargs: del kwargs['r_cache_key']
 
-                # If the cache key contains a format placeholder, e.g. {somevar} - then attempt to replace the
-                # placeholders using the function's kwargs
-                if not empty(fmt_args, itr=True) or not whitelist:
+                if callable(rk):
+                    rk = rk(*args, **kwargs)
+                elif not empty(fmt_args, itr=True) or not whitelist:
+                    # If the cache key contains a format placeholder, e.g. {somevar} - then attempt to replace the
+                    # placeholders using the function's kwargs
                     log.debug('Format_args not empty (or whitelist=False), formatting cache_key "%s"', cache_key)
                     rk = format_key(args, kwargs)
                 log.debug('Trying to load "%s" from Redis cache', rk)
