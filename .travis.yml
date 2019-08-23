@@ -1,5 +1,5 @@
 dist: bionic
-service:
+services:
   - redis-server
 language: python
 python:
