@@ -9,4 +9,6 @@ python:
 install:
   - pip install -r docs/requirements.txt
   - pip install .
+service:
+  - redis-server
 script: pytest tests.py
