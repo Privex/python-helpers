@@ -1,4 +1,6 @@
 dist: bionic
+service:
+  - redis-server
 language: python
 python:
   - "3.6"
@@ -9,6 +11,4 @@ python:
 install:
   - pip install -r docs/requirements.txt
   - pip install .
-service:
-  - redis-server
 script: pytest tests.py
