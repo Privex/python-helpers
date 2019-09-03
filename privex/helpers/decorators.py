@@ -111,7 +111,8 @@ def retry_on_err(max_retries: int = 3, delay: int = 3, **retry_conf):
                     log.warning('Giving up. Re-raising exception %s (as requested by `fail_on` arg)', type(e))
                     raise e
                 if retries < max_retries:
-                    log.exception(retry_msg, f.__name__, max_retries - retries)
+                    log.info('%s - %s', type(e), str(e))
+                    log.info(retry_msg, f.__name__, max_retries - retries)
                     sleep(delay)
                     kwargs['retry_attempts'] = retries + 1
                     return wrapper(*args, **kwargs)
