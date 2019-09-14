@@ -12,6 +12,8 @@ privex.helpers.decorators
       
       retry_on_err
       r_cache
+      async_sync
+
 
    .. rubric:: Classes
 

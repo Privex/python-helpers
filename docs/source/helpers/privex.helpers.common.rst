@@ -10,10 +10,15 @@ privex.helpers.common
    .. autosummary::
       :toctree: common
 
+      chunked
+      dec_round
       empty
-      env_csv
-      env_keyval
       env_bool
+      env_csv
+      env_cast
+      env_decimal
+      env_int
+      env_keyval
       is_false
       is_true
       parse_csv
@@ -29,6 +34,7 @@ privex.helpers.common
    .. autosummary::
    
       ErrHelpParser
+      Dictable
    
    
 

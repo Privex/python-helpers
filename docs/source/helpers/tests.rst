@@ -12,12 +12,14 @@ tests
    .. rubric:: Classes
 
    .. autosummary::
-      :toctree: stubs/tests
+      :toctree: tests
       
       EmptyIter
       TestBoolHelpers
+      TestGeneral
       TestIPReverseDNS
       TestParseHelpers
+      TestRedisCache
       PrivexBaseCase
    
    

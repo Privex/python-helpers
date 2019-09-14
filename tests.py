@@ -229,6 +229,7 @@ class TestBoolHelpers(PrivexBaseCase):
         self.assertFalse(helpers.empty(('world',), itr=True))
         self.assertFalse(helpers.empty({'hello': 'world'}, itr=True))
 
+
 VALID_V4_1 = '172.131.22.17'
 VALID_V4_1_16BOUND = '131.172.in-addr.arpa'
 VALID_V4_1_24BOUND = '22.131.172.in-addr.arpa'
@@ -406,6 +407,61 @@ class TestRedisCache(PrivexBaseCase):
         self.redis.delete('pxhelpers_test_rand', 'pxhelpers_rand_dyn:1:1', 'pxhelpers_rand_dyn:1:2',
                           'pxhelpers_rand_dyn:2:1')
         super(TestRedisCache, self).tearDown()
+
+
+class TestGeneral(PrivexBaseCase):
+    """General test cases that don't fit under a specific category"""
+
+    def test_chunked(self):
+        """Create a 20 element long list, split it into 4 chunks, and verify the chunks are correctly made"""
+        x = list(range(0, 20))
+        c = list(helpers.chunked(x, 4))
+        self.assertEqual(len(c), 4)
+        self.assertEqual(c[0], [0, 1, 2, 3, 4])
+        self.assertEqual(c[1], [5, 6, 7, 8, 9])
+
+    async def _tst_async(self, a, b):
+        """Basic async function used for testing async code"""
+        return a * 2, b * 3
+
+    def test_run_sync(self):
+        """Test helpers.async.run_sync by running an async function from this synchronous test"""
+        x, y = helpers.run_sync(self._tst_async, 5, 10)
+        d, e = helpers.run_sync(self._tst_async, 1, 2)
+        self.assertEqual(x, 10)
+        self.assertEqual(y, 30)
+        self.assertEqual(d, 2)
+        self.assertEqual(e, 6)
+
+    @helpers.async_sync
+    def test_async_decorator(self):
+        """Test the async_sync decorator by wrapping this unit test"""
+
+        x, y = yield from self._tst_async(5, 10)
+        d, e = yield from self._tst_async(1, 2)
+
+        self.assertEqual(x, 10)
+        self.assertEqual(y, 30)
+        self.assertEqual(d, 2)
+        self.assertEqual(e, 6)
+
+    def test_async_decorator_return(self):
+        """Test the async_sync decorator handles returning async data from synchronous function"""
+
+        async_func = self._tst_async
+
+        @helpers.async_sync
+        def non_async(a, b):
+            f, g = yield from async_func(a, b)
+            return f, g
+
+        x, y = non_async(5, 10)
+        d, e = non_async(1, 2)
+
+        self.assertEqual(x, 10)
+        self.assertEqual(y, 30)
+        self.assertEqual(d, 2)
+        self.assertEqual(e, 6)
 
 
 if __name__ == '__main__':

@@ -53,6 +53,12 @@ DEF_FAIL_MSG = "Giving up after attempting to retry function '%s' %d times."
 
 log = logging.getLogger(__name__)
 
+try:
+    from privex.helpers.asyncx import async_sync
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "asyncx", not loading async helpers')
+    pass
+
 
 def retry_on_err(max_retries: int = 3, delay: int = 3, **retry_conf):
     """
@@ -139,8 +145,8 @@ if plugin.HAS_REDIS:
         """
         POS_AUTO = 'force_pos'
         """
-        First attempt to format using *args whitelisted in ``format_args``, if that causes a KeyError/IndexError, then
-        pass kwarg values in the order they're listed in ``format_args`` 
+        First attempt to format using ``*args`` whitelisted in ``format_args``, if that causes a KeyError/IndexError, 
+        then pass kwarg values in the order they're listed in ``format_args`` 
         (only includes kwarg names listed in ``format_args``)
     
         # def func(x, y)
@@ -155,7 +161,9 @@ if plugin.HAS_REDIS:
         """Only use kwargs for formatting the cache key - requires named format placeholders, i.e. ``mykey:{x}``"""
 
         MIX = 'mix'
-        """Use both *args and **kwargs to format the cache_key (assuming mixed placeholders e.g. ``mykey:{}:{y}``"""
+        """
+        Use both ``*args`` and ``**kwargs`` to format the cache_key (assuming mixed placeholders e.g. ``mykey:{}:{y}``
+        """
 
 
     FO = FormatOpt

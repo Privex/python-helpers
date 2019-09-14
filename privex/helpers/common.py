@@ -37,11 +37,14 @@ Common functions and classes that don't fit into a specific category
     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
+import inspect
+import math
 import random
 import string
 import argparse
 import logging
 import sys
+from decimal import Decimal, getcontext
 from os import getenv as env
 from typing import Sequence, List, Union, Tuple
 
@@ -52,6 +55,7 @@ SAFE_CHARS = 'abcdefhkmnprstwxyz23456789ACDEFGHJKLMNPRSTWXYZ'
 
 ALPHANUM = string.ascii_uppercase + string.digits + string.ascii_lowercase
 """All characters from a-z, A-Z, and 0-9 - for random strings where there's no risk of user font confusion"""
+
 
 def random_str(size:int = 50, chars: Sequence = SAFE_CHARS) -> str:
     """
@@ -83,6 +87,7 @@ def random_str(size:int = 50, chars: Sequence = SAFE_CHARS) -> str:
 
     """
     return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
+
 
 def empty(v, zero: bool = False, itr: bool = False) -> bool:
     """
@@ -116,6 +121,7 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
 
     return False
 
+
 def is_true(v) -> bool:
     """
     Check if a given bool/str/int value is some form of ``True``:
@@ -138,6 +144,7 @@ def is_true(v) -> bool:
     """
     v = v.lower() if type(v) is str else v
     return v in [True, 'true', 'yes', 'y', '1', 1]
+
 
 def is_false(v, chk_none: bool = True) -> bool:
     """
@@ -171,6 +178,7 @@ def is_false(v, chk_none: bool = True) -> bool:
     chk = [False, 'false', 'no', 'n', '0', 0]
     chk += [None, 'none', 'null', ''] if chk_none else []
     return v in chk
+
 
 def parse_keyval(line: str, valsplit: str = ':', csvsplit=',') -> List[Tuple[str, str]]:
     """
@@ -211,10 +219,13 @@ def parse_csv(line: str, csvsplit: str = ',') -> List[str]:
         ['hello', 'world', 'test']
         >>> parse_csv(' world  ;   test   ; example', csvsplit=';')
         ['world', 'test', 'example']
-    
+
+
+    :param str line: A string of columns separated by commas e.g. ``hello,world,foo``
     :param str csvsplit: A character (or several) used to terminate each value in the list. Default: comma ``,``
     """
     return [x.strip() for x in line.strip().split(csvsplit)]
+
 
 def env_csv(env_key: str, env_default = None, csvsplit=',') -> List[str]:
     """
@@ -237,7 +248,8 @@ def env_csv(env_key: str, env_default = None, csvsplit=',') -> List[str]:
     d = env(env_key)
     return env_default if empty(d) else parse_csv(d, csvsplit=csvsplit)
 
-def env_keyval(env_key: str, env_default = None, valsplit=':', csvsplit=',') -> List[Tuple[str, str]]:
+
+def env_keyval(env_key: str, env_default=None, valsplit=':', csvsplit=',') -> List[Tuple[str, str]]:
     """
     Parses an environment variable containing ``key:val,key:val`` into a list of tuples [(key,val), (key,val)]
     
@@ -251,7 +263,27 @@ def env_keyval(env_key: str, env_default = None, valsplit=':', csvsplit=',') -> 
     d = env(env_key)
     return env_default if empty(d) else parse_keyval(d, valsplit=valsplit, csvsplit=csvsplit)
 
-def env_bool(env_key: str, env_default = None) -> Union[bool, None]:
+
+def env_cast(env_key: str, cast: callable, env_default=None):
+    """
+    Obtains an environment variable ``env_key``, if it's empty or not set, ``env_default`` will be returned.
+    Otherwise, it will be converted into a type of your choice using the callable ``cast`` parameter
+
+    Example:
+
+        >>> os.environ['HELLO'] = '1.234'
+        >>> env_cast('HELLO', Decimal, Decimal('0'))
+        Decimal('1.234')
+
+
+    :param callable cast:   A function to cast the user's env data such as ``int`` ``str`` or ``Decimal`` etc.
+    :param str env_key:     Environment var to attempt to load
+    :param any env_default: Fallback value if the env var is empty / not set (Default: None)
+    """
+    return env_default if empty(env(env_key)) else cast(env(env_key))
+
+
+def env_bool(env_key: str, env_default=None) -> Union[bool, None]:
     """
     Obtains an environment variable ``env_key``, if it's empty or not set, ``env_default`` will be returned.
     Otherwise, it will be converted into a boolean using :py:func:`.is_true`
@@ -269,7 +301,79 @@ def env_bool(env_key: str, env_default = None) -> Union[bool, None]:
     :param str env_key:     Environment var to attempt to load
     :param any env_default: Fallback value if the env var is empty / not set (Default: None)
     """
-    return env_default if empty(env(env_key)) else is_true(env(env_key))
+    return env_cast(env_key=env_key, cast=is_true, env_default=env_default)
+
+
+def env_int(env_key: str, env_default=None) -> int:
+    """Alias for :py:func:`.env_cast` with ``int`` casting"""
+    return env_cast(env_key=env_key, cast=int, env_default=env_default)
+
+
+def env_decimal(env_key: str, env_default=None) -> Decimal:
+    """Alias for :py:func:`.env_cast` with ``Decimal`` casting"""
+    return env_cast(env_key=env_key, cast=Decimal, env_default=env_default)
+
+
+def dec_round(amount: Decimal, dp: int = 2, rounding=None) -> Decimal:
+    """
+    Round a Decimal to x decimal places using ``quantize`` (``dp`` must be >= 1 and the default dp is 2)
+
+    If you don't specify a rounding option, it will use whatever rounding has been set in :py:func:`decimal.getcontext`
+    (most python versions have this default to ``ROUND_HALF_EVEN``)
+
+    Basic Usage:
+
+        >>> from decimal import Decimal, getcontext, ROUND_FLOOR
+        >>> x = Decimal('1.9998')
+        >>> dec_round(x, 3)
+        Decimal('2.000')
+
+    Custom Rounding as an argument:
+
+        >>> dec_round(x, 3, rounding=ROUND_FLOOR)
+        Decimal('1.999')
+
+    Override context rounding to set the default:
+
+        >>> getcontext().rounding = ROUND_FLOOR
+        >>> dec_round(x, 3)
+        Decimal('1.999')
+
+
+    :param Decimal   amount: The amount (as a Decimal) to round
+    :param int           dp: Number of decimal places to round ``amount`` to. (Default: 2)
+    :param str     rounding: A :py:mod:`decimal` rounding option, e.g. ``ROUND_HALF_EVEN`` or ``ROUND_FLOOR``
+    :return Decimal rounded: The rounded Decimal amount
+    """
+    dp = int(dp)
+    if dp <= 0:
+        raise ArithmeticError('dec_round expects dp >= 1')
+    rounding = getcontext().rounding if not rounding else rounding
+    dp_str = '.' + str('0' * (dp - 1)) + '1'
+    return Decimal(amount).quantize(Decimal(dp_str), rounding=rounding)
+
+
+def chunked(iterable, n):
+    """ Split iterable into ``n`` iterables of similar size
+
+    Examples::
+        >>> l = [1, 2, 3, 4]
+        >>> list(chunked(l, 4))
+        [[1], [2], [3], [4]]
+
+        >>> l = [1, 2, 3]
+        >>> list(chunked(l, 4))
+        [[1], [2], [3], []]
+
+        >>> l = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> list(chunked(l, 4))
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10]]
+
+    Taken from: https://stackoverflow.com/a/24484181/2648583
+
+    """
+    chunksize = int(math.ceil(len(iterable) / n))
+    return (iterable[i * chunksize:i * chunksize + chunksize] for i in range(n))
 
 
 class ErrHelpParser(argparse.ArgumentParser):
@@ -285,3 +389,53 @@ class ErrHelpParser(argparse.ArgumentParser):
         sys.stderr.write('error: %s\n' % message)
         self.print_help()
         sys.exit(2)
+
+
+class Dictable:
+    """
+    A small abstract class for use with Python 3.7 dataclasses.
+
+    Allows dataclasses to be converted into a ``dict`` using the standard ``dict()`` function:
+
+        >>> @dataclass
+        >>> class SomeData(Dictable):
+        ...     a: str
+        ...     b: int
+        ...
+        >>> mydata = SomeData(a='test', b=2)
+        >>> dict(mydata)
+        {'a': 'test', 'b': 2}
+
+    Also allows creating dataclasses from arbitrary dictionaries, while ignoring any extraneous dict keys.
+
+    If you create a dataclass using a ``dict`` and you have keys in your ``dict`` that don't exist in the dataclass,
+    it'll generally throw an error due to non-existent kwargs:
+
+        >>> mydict = dict(a='test', b=2, c='hello')
+        >>> sd = SomeData(**mydict)
+        TypeError: __init__() got an unexpected keyword argument 'c'
+
+    Using ``from_dict`` you can simply trim off any extraneous dict keys:
+
+        >>> sd = SomeData.from_dict(**mydict)
+        >>> sd.a, sd.b
+        ('test', 2)
+        >>> sd.c
+        AttributeError: 'SomeData' object has no attribute 'c'
+
+
+
+    """
+
+    def __iter__(self):
+        # Allow casting into dict()
+        for k, v in self.__dict__.items(): yield (k, v,)
+
+    @classmethod
+    def from_dict(cls, env):
+        # noinspection PyArgumentList
+        return cls(**{
+            k: v for k, v in env.items()
+            if k in inspect.signature(cls).parameters
+        })
+

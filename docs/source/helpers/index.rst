@@ -4,6 +4,7 @@ Code Docs for each helper module
 .. autosummary::
     :toctree:
     
+    privex.helpers.asyncx
     privex.helpers.common
     privex.helpers.decorators
     privex.helpers.django

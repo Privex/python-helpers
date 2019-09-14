@@ -22,7 +22,7 @@ a new commit is pushed to the `Github Project`_
 
 
 Contents
-=======
+=========
 
 .. toctree::
    :maxdepth: 8
