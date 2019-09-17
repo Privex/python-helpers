@@ -36,6 +36,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from setuptools import setup, find_packages
 from os.path import join, dirname, abspath
+from privex.helpers import VERSION
 
 BASE_DIR = dirname(abspath(__file__))
 
@@ -45,7 +46,7 @@ with open(join(BASE_DIR, "README.md"), "r") as fh:
 setup(
     name='privex_helpers',
 
-    version='1.3.0',
+    version=VERSION,
 
     description='A variety of helper functions and classes, useful for many different projects',
     long_description=long_description,
@@ -61,6 +62,9 @@ setup(
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],

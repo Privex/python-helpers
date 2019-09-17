@@ -64,6 +64,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
+VERSION = '1.3.0.post1'
 
 class ImproperlyConfigured(Exception):
     """Placeholder in-case this fails to import from django.core.exceptions"""
