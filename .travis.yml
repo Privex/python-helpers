@@ -13,4 +13,6 @@ python:
 install:
   - pip install -r docs/requirements.txt
   - pip install .
-script: pytest tests.py
+script: pytest --cov=./privex tests.py
+after_success:
+  - codecov

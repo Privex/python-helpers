@@ -10,3 +10,9 @@ Django>=2
 dnspython>=1.16.0
 redis>=3.3.8
 privex-loghelper>=1.0.4
+
+# Unit testing
+pytest
+pytest-cov
+coverage
+codecov
