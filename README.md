@@ -1,7 +1,11 @@
 # Privex's Python Helpers
 
-[![Documentation Status](https://readthedocs.org/projects/python-helpers/badge/?version=latest)](https://python-helpers.readthedocs.io/en/latest/?badge=latest) [![Build Status](https://travis-ci.com/Privex/python-helpers.svg?branch=master)](https://travis-ci.com/Privex/python-helpers) [![PyPi Version](https://img.shields.io/pypi/v/privex-jsonrpc.svg)](https://pypi.org/project/privex-helpers/)
-![License Button](https://img.shields.io/pypi/l/privex-helpers) ![PyPI - Downloads](https://img.shields.io/pypi/dm/privex-helpers)
+[![Documentation Status](https://readthedocs.org/projects/python-helpers/badge/?version=latest)](https://python-helpers.readthedocs.io/en/latest/?badge=latest) 
+[![Build Status](https://travis-ci.com/Privex/python-helpers.svg?branch=master)](https://travis-ci.com/Privex/python-helpers) 
+[![Codecov](https://img.shields.io/codecov/c/github/Privex/python-helpers)](https://codecov.io/gh/Privex/python-helpers)  
+[![PyPi Version](https://img.shields.io/pypi/v/privex-jsonrpc.svg)](https://pypi.org/project/privex-helpers/)
+![License Button](https://img.shields.io/pypi/l/privex-helpers) 
+![PyPI - Downloads](https://img.shields.io/pypi/dm/privex-helpers)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/privex-helpers) 
 ![GitHub last commit](https://img.shields.io/github/last-commit/Privex/python-helpers)
 
