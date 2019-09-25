@@ -2,6 +2,8 @@ dist: bionic
 services:
   - redis-server
 language: python
+env:
+  - CODECOV_TOKEN="e309d317-ca30-4c79-a01c-f4dc7c60e471"
 python:
   - "3.6"
   - "3.7"
