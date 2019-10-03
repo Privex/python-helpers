@@ -105,13 +105,18 @@ if plugin.HAS_REDIS:
             v = pickle.dumps(value) if self.use_pickle else value
             return self.redis.set(str(key), v, ex=timeout)
 
-        def remove(self, key: str) -> bool:
-            try:
-                self.get(key, fail=True)
-                self.redis.delete(key)
-                return True
-            except CacheNotFound:
-                return False
+        def remove(self, *key: str) -> bool:
+            removed = 0
+            for k in key:
+                k = str(k)
+                try:
+                    self.get(k, fail=True)
+                    self.redis.delete(k)
+                    removed += 1
+                except CacheNotFound:
+                    pass
+
+            return removed == len(key)
 
         def update_timeout(self, key: str, timeout: int = DEFAULT_CACHE_TIMEOUT) -> Any:
             key, timeout = str(key), int(timeout)

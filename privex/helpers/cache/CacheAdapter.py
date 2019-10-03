@@ -55,16 +55,15 @@ class CacheAdapter(ABC):
         """
         raise NotImplemented(f'{self.__class__.__name__} must implement .set()')
 
-    
     @abstractmethod
-    def remove(self, key: str) -> bool:
+    def remove(self, *key: str) -> bool:
         """
-        Remove a key from the cache.
+        Remove one or more keys from the cache.
         
-        If the cache key existed before removal, ``True`` will be returned. If it didn't exist (and thus couldn't
+        If all cache keys existed before removal, ``True`` will be returned. If some didn't exist (and thus couldn't
         remove), then ``False`` will be returned.
         
-        :param str key: The cache key to remove
+        :param str key: The cache key(s) to remove
         :return bool removed: ``True`` if ``key`` existed and was removed
         :return bool removed: ``False`` if ``key`` didn't exist, and no action was taken.
         """

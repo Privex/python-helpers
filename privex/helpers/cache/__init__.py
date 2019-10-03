@@ -327,19 +327,19 @@ def get_or_set(key: str, value: Union[Any, callable], timeout: int = DEFAULT_CAC
     return a.get_or_set(key=key, value=value, timeout=timeout)
 
 
-def remove(key: str) -> bool:
+def remove(*key: str) -> bool:
     """
-    Remove a key from the cache.
+    Remove one or more keys from the cache.
 
-    If the cache key existed before removal, ``True`` will be returned. If it didn't exist (and thus couldn't
+    If all cache keys existed before removal, ``True`` will be returned. If some didn't exist (and thus couldn't
     remove), then ``False`` will be returned.
 
-    :param str key: The cache key to remove
+    :param str key: The cache key(s) to remove
     :return bool removed: ``True`` if ``key`` existed and was removed
     :return bool removed: ``False`` if ``key`` didn't exist, and no action was taken.
     """
     a = adapter_get()
-    return a.remove(key=key)
+    return a.remove(*key)
 
 
 def update_timeout(key: str, timeout: int = DEFAULT_CACHE_TIMEOUT) -> Any:

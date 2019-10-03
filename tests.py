@@ -78,12 +78,16 @@ You can also use the ``pytest`` tool (used by default for our Travis CI)::
 import unittest
 import logging
 import os
-from collections import namedtuple
 from time import sleep
 
 from privex import helpers
 from privex.loghelper import LogHelper
-from privex.helpers import ip_to_rdns, BoundaryException, plugin, r_cache, random_str, CacheAdapter
+from privex.helpers import ip_to_rdns, BoundaryException, plugin, r_cache, random_str, CacheAdapter, env_bool
+
+if env_bool('DEBUG', False) is True:
+    LogHelper('privex.helpers', level=logging.DEBUG).add_console_handler(logging.DEBUG)
+else:
+    LogHelper('privex.helpers', level=logging.CRITICAL)  # Silence non-critical log messages
 
 
 class EmptyIter(object):
@@ -343,17 +347,17 @@ class TestIPReverseDNS(PrivexBaseCase):
             ip_to_rdns(VALID_V6_1, boundary=True, v6_boundary=0)
 
 
-class TestRedisCacheDecorator(PrivexBaseCase):
+class TestCacheDecoratorMemory(PrivexBaseCase):
     """
-    Unit tests which verify that the decorator :py:func:`privex.helpers.decorators.r_test` caches correctly, and
-    also verifies dynamic cache key generation works as expected.
+    Test that the decorator :py:func:`privex.helpers.decorators.r_cache` caches correctly, with adapter
+    :class:`helpers.MemoryCache` and also verifies dynamic cache key generation works as expected.
     """
-    def setUp(self):
-        if not plugin.HAS_REDIS:
-            print('The package "redis" is not installed, skipping Redis dependent tests.')
-            self.tearDown()
-        # import redis
-        self.redis = plugin.get_redis()
+
+    cache = helpers.cache.cached
+    
+    @classmethod
+    def setUpClass(cls):
+        helpers.cache.adapter_set(helpers.MemoryCache())
 
     def test_rcache_rand(self):
         """Decorate random string function with r_cache - test that two calls return the same string"""
@@ -406,14 +410,33 @@ class TestRedisCacheDecorator(PrivexBaseCase):
 
     def tearDown(self):
         """Remove any Redis keys used during test, to avoid failure on re-run"""
-        self.redis.delete('pxhelpers_test_rand', 'pxhelpers_rand_dyn:1:1', 'pxhelpers_rand_dyn:1:2',
+        self.cache.remove('pxhelpers_test_rand', 'pxhelpers_rand_dyn:1:1', 'pxhelpers_rand_dyn:1:2',
                           'pxhelpers_rand_dyn:2:1')
-        super(TestRedisCacheDecorator, self).tearDown()
+        super(TestCacheDecoratorMemory, self).tearDown()
+
+
+class TestCacheDecoratorRedis(TestCacheDecoratorMemory):
+    """
+    Test decorator :py:func:`privex.helpers.decorators.r_cache` with adapter
+    :class:`helpers.RedisCache`
+    
+    (See :class:`.TestCacheDecoratorMemory`)
+    """
+    
+    @classmethod
+    def setUpClass(cls):
+        if not plugin.HAS_REDIS:
+            print('The package "redis" is not installed, skipping Redis dependent tests.')
+            return cls.tearDownClass()
+        helpers.cache.adapter_set(helpers.RedisCache())
 
 
 class TestGeneral(PrivexBaseCase):
     """General test cases that don't fit under a specific category"""
-
+    
+    def setUp(self):
+        self.tries = 0
+    
     def test_chunked(self):
         """Create a 20 element long list, split it into 4 chunks, and verify the chunks are correctly made"""
         x = list(range(0, 20))
@@ -464,6 +487,36 @@ class TestGeneral(PrivexBaseCase):
         self.assertEqual(y, 30)
         self.assertEqual(d, 2)
         self.assertEqual(e, 6)
+    
+    def test_retry_on_err(self):
+        """Test that the :class:`helpers.retry_on_err` decorator retries a function 3 times as expected"""
+        
+        @helpers.retry_on_err(max_retries=3, delay=0.2)
+        def retry_func(cls):
+            cls.tries += 1
+            raise Exception
+        
+        with self.assertRaises(Exception):
+            retry_func(self)
+        
+        # The first run should cause tries = 1, then after 3 re-tries it should reach 4 tries in total.
+        self.assertEqual(self.tries, 4)
+
+    def test_retry_on_err_return(self):
+        """Test that the :class:`helpers.retry_on_err` decorator can return correctly after some retries"""
+    
+        @helpers.retry_on_err(max_retries=3, delay=0.2)
+        def retry_func(cls):
+            if cls.tries < 3:
+                cls.tries += 1
+                raise Exception
+            return 'success'
+        
+        ret = retry_func(self)
+    
+        # retry_func stops raising exceptions after the 2nd retry (try 3), thus 3 tries in total
+        self.assertEqual(self.tries, 3)
+        self.assertEqual(ret, 'success')
 
 
 class TestMemoryCache(PrivexBaseCase):
@@ -505,19 +558,19 @@ class TestMemoryCache(PrivexBaseCase):
         key, c = self.cache_keys[1], self.cache
         self.assertIs(c.get(key), None)
         
-        c.set(key, 'ExpiryTest', timeout=4)
+        c.set(key, 'ExpiryTest', timeout=2)
         self.assertEqual(c.get(key), 'ExpiryTest')
-        sleep(5)
+        sleep(3)
         self.assertEqual(c.get(key), None)
     
     def test_cache_update_timeout(self):
         """Test that cache.update_timeout extends timeouts correctly"""
         key, c = self.cache_keys[2], self.cache
-        c.set(key, 'UpdateExpiryTest', timeout=6)
+        c.set(key, 'UpdateExpiryTest', timeout=3)
         self.assertEqual(c.get(key), 'UpdateExpiryTest')
-        sleep(3)
+        sleep(1.5)
         c.update_timeout(key, timeout=10)
-        sleep(4)
+        sleep(2.5)
         self.assertEqual(c.get(key), 'UpdateExpiryTest')
     
     def test_cache_update_timeout_raise(self):

@@ -1,5 +1,5 @@
-tests.EmptyIter
-===============
+EmptyIter
+=========
 
 .. currentmodule:: tests
 

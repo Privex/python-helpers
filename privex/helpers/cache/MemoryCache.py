@@ -36,6 +36,7 @@ class MemoryCache(CacheAdapter):
         key = str(key)
         c = self.__CACHE
         if key in c:
+            log.debug('Cache key "%s" found in __CACHE. Checking expiry...', key)
             vc = c[key]
             if str(vc['timeout']) != 'never' and vc['timeout'] < datetime.utcnow():
                 log.debug('Cache key "%s" has expired. Removing from cache.')
@@ -43,14 +44,17 @@ class MemoryCache(CacheAdapter):
                 if fail:
                     raise CacheNotFound(f'Cache key "{key}" was expired.')
                 return default
+            log.debug('Cache key "%s" is valid and not expired. Returning value "%s"', key, vc)
             return vc['value']
         if fail:
             raise CacheNotFound(f'Cache key "{key}" was not found.')
+        log.debug('Cache key "%s" was not found in __CACHE. Returning default value.', key)
         return default
 
     def set(self, key: str, value: Any, timeout: Optional[int] = DEFAULT_CACHE_TIMEOUT):
         key, timeout = str(key), int(timeout)
         c = self.__CACHE
+        log.debug('Setting cache key "%s" to value "%s" with timeout %s', key, value, timeout)
         c[key] = dict(value=value, timeout=datetime.utcnow() + timedelta(seconds=timeout))
         return c[key]
 
@@ -63,12 +67,14 @@ class MemoryCache(CacheAdapter):
             self.set(key=key, value=k, timeout=timeout)
         return k
     
-    def remove(self, key: str) -> bool:
-        key = str(key)
-        if key in self.__CACHE:
-            del self.__CACHE[key]
-            return True
-        return False
+    def remove(self, *key: str) -> bool:
+        removed = 0
+        for k in key:
+            k = str(k)
+            if k in self.__CACHE:
+                del self.__CACHE[k]
+                removed += 1
+        return removed == len(key)
 
     def update_timeout(self, key: str, timeout: int = DEFAULT_CACHE_TIMEOUT) -> Any:
         key, timeout = str(key), int(timeout)

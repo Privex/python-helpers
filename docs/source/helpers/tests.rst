@@ -2,11 +2,6 @@ tests
 =====
 
 .. automodule:: tests
-
-   
-   
-   
-
    
    
    .. rubric:: Classes
@@ -19,7 +14,8 @@ tests
       TestGeneral
       TestIPReverseDNS
       TestParseHelpers
-      TestRedisCacheDecorator
+      TestCacheDecoratorMemory
+      TestCacheDecoratorRedis
       TestMemoryCache
       TestRedisCache
       PrivexBaseCase
