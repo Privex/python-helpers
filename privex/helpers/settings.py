@@ -53,3 +53,4 @@ REDIS_PORT = 6379
 
 REDIS_DB = 0
 """Redis database to use (number)"""
+DEFAULT_CACHE_TIMEOUT = 300

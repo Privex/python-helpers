@@ -64,6 +64,22 @@ try:
         if 'redis' not in __STORE:
             __STORE['redis'] = redis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=settings.REDIS_DB)
         return __STORE['redis']
+    
+    def reset_redis() -> redis.Redis:
+        """Close the global Redis connection, delete the instance, then re-instantiate it"""
+        if 'redis' in __STORE:
+            __STORE['redis'].close()
+            del __STORE['redis']
+        return get_redis()
+    
+    def configure_redis(host=settings.REDIS_HOST, port: int = settings.REDIS_PORT, db: int = settings.REDIS_DB):
+        """Update global Redis settings and re-instantiate the global Redis instance with the new settings."""
+        settings.REDIS_DB = db
+        settings.REDIS_PORT = port
+        settings.REDIS_HOST = host
+        if 'redis' in __STORE:
+            del __STORE['redis']
+        return get_redis()
 
     HAS_REDIS = True
 

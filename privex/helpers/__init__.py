@@ -66,6 +66,7 @@ name = 'helpers'
 
 VERSION = '1.3.0.post3'
 
+
 class ImproperlyConfigured(Exception):
     """Placeholder in-case this fails to import from django.core.exceptions"""
     pass
@@ -97,6 +98,7 @@ from privex.helpers.decorators import *
 from privex.helpers.net import *
 from privex.helpers.exceptions import *
 from privex.helpers.plugin import *
+from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, RedisCache, cached
 
 try:
     from privex.helpers.asyncx import *

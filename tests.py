@@ -79,9 +79,11 @@ import unittest
 import logging
 import os
 from collections import namedtuple
+from time import sleep
+
 from privex import helpers
 from privex.loghelper import LogHelper
-from privex.helpers import ip_to_rdns, BoundaryException, plugin, r_cache, random_str
+from privex.helpers import ip_to_rdns, BoundaryException, plugin, r_cache, random_str, CacheAdapter
 
 
 class EmptyIter(object):
@@ -341,7 +343,7 @@ class TestIPReverseDNS(PrivexBaseCase):
             ip_to_rdns(VALID_V6_1, boundary=True, v6_boundary=0)
 
 
-class TestRedisCache(PrivexBaseCase):
+class TestRedisCacheDecorator(PrivexBaseCase):
     """
     Unit tests which verify that the decorator :py:func:`privex.helpers.decorators.r_test` caches correctly, and
     also verifies dynamic cache key generation works as expected.
@@ -406,7 +408,7 @@ class TestRedisCache(PrivexBaseCase):
         """Remove any Redis keys used during test, to avoid failure on re-run"""
         self.redis.delete('pxhelpers_test_rand', 'pxhelpers_rand_dyn:1:1', 'pxhelpers_rand_dyn:1:2',
                           'pxhelpers_rand_dyn:2:1')
-        super(TestRedisCache, self).tearDown()
+        super(TestRedisCacheDecorator, self).tearDown()
 
 
 class TestGeneral(PrivexBaseCase):
@@ -462,6 +464,93 @@ class TestGeneral(PrivexBaseCase):
         self.assertEqual(y, 30)
         self.assertEqual(d, 2)
         self.assertEqual(e, 6)
+
+
+class TestMemoryCache(PrivexBaseCase):
+    """:class:`.MemoryCache` Test cases for caching related functions/classes in :py:mod:`privex.helpers.cache`"""
+    
+    cache_keys = [
+        'test_cache_set',
+        'test_expire',
+        'test_update_timeout',
+        'test_update_timeout_noexist',
+        'test_cache_remove',
+    ]
+    """A list of all cache keys used during the test case, so they can be removed by :py:meth:`.tearDown` once done."""
+    
+    cache: CacheAdapter
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set the current cache adapter to an instance of MemoryCache() and make it available through ``self.cache``"""
+        helpers.cache.adapter_set(helpers.MemoryCache())
+        cls.cache = helpers.cache
+    
+    @classmethod
+    def tearDownClass(cls):
+        for k in cls.cache_keys:
+            cls.cache.remove(k)
+            sleep(0.1)   # A small sleep to give cache backends time to fully remove each item.
+    
+    def test_cache_set(self):
+        """Test basic cache.set and cache.get"""
+        key, c = self.cache_keys[0], self.cache
+        self.assertIs(c.get(key), None)
+
+        c.set(key=key, value='TestingValue')
+        self.assertEqual(c.get(key), 'TestingValue')
+
+    def test_cache_expire(self):
+        """Test that cache keys are removed after the specified timeout"""
+        key, c = self.cache_keys[1], self.cache
+        self.assertIs(c.get(key), None)
+        
+        c.set(key, 'ExpiryTest', timeout=4)
+        self.assertEqual(c.get(key), 'ExpiryTest')
+        sleep(5)
+        self.assertEqual(c.get(key), None)
+    
+    def test_cache_update_timeout(self):
+        """Test that cache.update_timeout extends timeouts correctly"""
+        key, c = self.cache_keys[2], self.cache
+        c.set(key, 'UpdateExpiryTest', timeout=6)
+        self.assertEqual(c.get(key), 'UpdateExpiryTest')
+        sleep(3)
+        c.update_timeout(key, timeout=10)
+        sleep(4)
+        self.assertEqual(c.get(key), 'UpdateExpiryTest')
+    
+    def test_cache_update_timeout_raise(self):
+        """Test that cache.update_timeout raises :class:`.helpers.CacheNotFound` if the key does not exist"""
+        key, c = self.cache_keys[3], self.cache
+        with self.assertRaises(helpers.CacheNotFound):
+            c.update_timeout(key, timeout=10)
+
+    def test_cache_remove(self):
+        """Test that cache.remove correctly removes cache keys"""
+        key, c = self.cache_keys[4], self.cache
+        c.set(key, 'RemoveTest', timeout=30)
+        self.assertEqual(c.get(key), 'RemoveTest')
+        c.remove(key)
+        self.assertIs(c.get(key), None)
+
+
+class TestRedisCache(TestMemoryCache):
+    """
+    :class:`.RedisCache` Test cases for caching related functions/classes in :py:mod:`privex.helpers.cache`
+    
+    This is **simply a child class** for :class:`.TestMemoryCache` - but with an overridden :class:`.setUpClass`
+    to ensure the cache adapter is set to :class:`.RedisCache` for this re-run.
+    """
+    
+    cache_keys: list
+    """A list of all cache keys used during the test case, so they can be removed by :py:meth:`.tearDown` once done."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Set the current cache adapter to an instance of RedisCache() and make it available through ``self.cache``"""
+        helpers.cache.adapter_set(helpers.RedisCache())
+        cls.cache = helpers.cache
 
 
 if __name__ == '__main__':

@@ -39,6 +39,7 @@ the standard base exceptions in Python, and are commonly used across our project
 
 """
 
+
 class PrivexException(Exception):
     """Base exception for all custom Privex exceptions"""
     pass
@@ -51,6 +52,7 @@ class PrivexException(Exception):
 class BaseDNSException(PrivexException):
     """Base exception for DNS-related exceptions"""
     pass
+
 
 class BoundaryException(BaseDNSException):
     """
@@ -70,10 +72,29 @@ class BoundaryException(BaseDNSException):
     """
     pass
 
+
 class DomainNotFound(BaseDNSException):
     """Thrown when a (sub)domain or it's parent(s) could not be found"""
     pass
 
+
 class InvalidDNSRecord(BaseDNSException):
     """Thrown when a passed DNS record is not valid"""
     pass
+
+
+class CacheNotFound(PrivexException):
+    """
+    Thrown when a cache key is requested, but it doesn't exist / is expired.
+    
+    Most likely only used when some form of "strict mode" is enabled for the cache adapter.
+    """
+    pass
+
+
+class NotConfigured(PrivexException):
+    """
+    Thrown when code attempts to access something that wasn't fully configured / instantiated by the user.
+    
+    Example: Attempting to use a database dependant function/method without having configured any database details.
+    """
