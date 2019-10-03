@@ -64,7 +64,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '1.3.0.post3'
+VERSION = '1.3.1'
 
 
 class ImproperlyConfigured(Exception):
