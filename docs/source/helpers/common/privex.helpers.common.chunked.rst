@@ -1,5 +1,5 @@
-privex.helpers.common.chunked
-=============================
+chunked
+=======
 
 .. currentmodule:: privex.helpers.common
 

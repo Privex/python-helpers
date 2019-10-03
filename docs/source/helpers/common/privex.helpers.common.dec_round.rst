@@ -1,5 +1,5 @@
-privex.helpers.common.dec\_round
-================================
+dec\_round
+==========
 
 .. currentmodule:: privex.helpers.common
 

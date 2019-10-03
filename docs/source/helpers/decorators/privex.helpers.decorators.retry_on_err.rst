@@ -1,5 +1,5 @@
-privex.helpers.decorators.retry\_on\_err
-========================================
+retry\_on\_err
+==============
 
 .. currentmodule:: privex.helpers.decorators
 

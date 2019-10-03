@@ -1,5 +1,5 @@
-privex.helpers.common.empty
-===========================
+empty
+=====
 
 .. currentmodule:: privex.helpers.common
 

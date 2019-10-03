@@ -1,5 +1,5 @@
-privex.helpers.common.parse\_csv
-================================
+parse\_csv
+==========
 
 .. currentmodule:: privex.helpers.common
 

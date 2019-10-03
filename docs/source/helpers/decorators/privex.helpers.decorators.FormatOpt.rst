@@ -1,5 +1,5 @@
-privex.helpers.decorators.FormatOpt
-===================================
+FormatOpt
+=========
 
 .. currentmodule:: privex.helpers.decorators
 

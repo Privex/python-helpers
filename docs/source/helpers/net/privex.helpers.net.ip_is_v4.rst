@@ -1,5 +1,5 @@
-privex.helpers.net.ip\_is\_v4
-=============================
+ip\_is\_v4
+==========
 
 .. currentmodule:: privex.helpers.net
 

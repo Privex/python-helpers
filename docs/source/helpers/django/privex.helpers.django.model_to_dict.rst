@@ -1,5 +1,5 @@
-privex.helpers.django.model\_to\_dict
-=====================================
+model\_to\_dict
+===============
 
 .. currentmodule:: privex.helpers.django
 

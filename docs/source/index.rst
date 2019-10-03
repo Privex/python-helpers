@@ -33,7 +33,7 @@ Contents
 
 
 .. toctree::
-   :maxdepth: 8
+   :maxdepth: 3
    :caption: Code Documentation:
 
    helpers/index

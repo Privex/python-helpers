@@ -1,5 +1,5 @@
-privex.helpers.common.random\_str
-=================================
+random\_str
+===========
 
 .. currentmodule:: privex.helpers.common
 

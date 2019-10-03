@@ -1,5 +1,5 @@
-privex.helpers.common.env\_decimal
-==================================
+env\_decimal
+============
 
 .. currentmodule:: privex.helpers.common
 

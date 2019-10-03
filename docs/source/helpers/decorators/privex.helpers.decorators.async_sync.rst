@@ -1,5 +1,5 @@
-privex.helpers.decorators.async\_sync
-=====================================
+async\_sync
+===========
 
 .. currentmodule:: privex.helpers.decorators
 

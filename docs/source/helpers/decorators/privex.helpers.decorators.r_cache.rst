@@ -1,5 +1,5 @@
-privex.helpers.decorators.r\_cache
-==================================
+r\_cache
+========
 
 .. currentmodule:: privex.helpers.decorators
 

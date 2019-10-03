@@ -1,5 +1,5 @@
-privex.helpers.exceptions.BoundaryException
-===========================================
+BoundaryException
+=================
 
 .. currentmodule:: privex.helpers.exceptions
 

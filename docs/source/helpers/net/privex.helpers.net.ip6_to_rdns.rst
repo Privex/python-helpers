@@ -1,5 +1,5 @@
-privex.helpers.net.ip6\_to\_rdns
-================================
+ip6\_to\_rdns
+=============
 
 .. currentmodule:: privex.helpers.net
 

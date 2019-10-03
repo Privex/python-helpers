@@ -1,5 +1,5 @@
-privex.helpers.exceptions.PrivexException
-=========================================
+PrivexException
+===============
 
 .. currentmodule:: privex.helpers.exceptions
 

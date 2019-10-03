@@ -1,5 +1,5 @@
-privex.helpers.exceptions.InvalidDNSRecord
-==========================================
+InvalidDNSRecord
+================
 
 .. currentmodule:: privex.helpers.exceptions
 

@@ -1,5 +1,5 @@
-privex.helpers.net.asn\_to\_name
-================================
+asn\_to\_name
+=============
 
 .. currentmodule:: privex.helpers.net
 

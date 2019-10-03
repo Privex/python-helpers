@@ -1,5 +1,5 @@
-privex.helpers.net.ip\_to\_rdns
-===============================
+ip\_to\_rdns
+============
 
 .. currentmodule:: privex.helpers.net
 

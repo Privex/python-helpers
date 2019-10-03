@@ -1,5 +1,5 @@
-privex.helpers.common.env\_cast
-===============================
+env\_cast
+=========
 
 .. currentmodule:: privex.helpers.common
 

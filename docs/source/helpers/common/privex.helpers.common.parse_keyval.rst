@@ -1,5 +1,5 @@
-privex.helpers.common.parse\_keyval
-===================================
+parse\_keyval
+=============
 
 .. currentmodule:: privex.helpers.common
 

@@ -1,5 +1,5 @@
-privex.helpers.django.to\_json
-==============================
+to\_json
+========
 
 .. currentmodule:: privex.helpers.django
 

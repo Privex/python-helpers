@@ -1,5 +1,5 @@
-privex.helpers.common.is\_false
-===============================
+is\_false
+=========
 
 .. currentmodule:: privex.helpers.common
 

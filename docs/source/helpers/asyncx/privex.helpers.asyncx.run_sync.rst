@@ -1,5 +1,5 @@
-privex.helpers.asyncx.run\_sync
-===============================
+run\_sync
+=========
 
 .. currentmodule:: privex.helpers.asyncx
 

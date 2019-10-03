@@ -5,6 +5,7 @@ Code Docs for each helper module
     :toctree:
     
     privex.helpers.asyncx
+    privex.helpers.cache
     privex.helpers.common
     privex.helpers.decorators
     privex.helpers.django

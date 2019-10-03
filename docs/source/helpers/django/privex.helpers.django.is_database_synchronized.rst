@@ -1,5 +1,5 @@
-privex.helpers.django.is\_database\_synchronized
-================================================
+is\_database\_synchronized
+==========================
 
 .. currentmodule:: privex.helpers.django
 

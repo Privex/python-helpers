@@ -1,5 +1,5 @@
-privex.helpers.exceptions.BaseDNSException
-==========================================
+BaseDNSException
+================
 
 .. currentmodule:: privex.helpers.exceptions
 

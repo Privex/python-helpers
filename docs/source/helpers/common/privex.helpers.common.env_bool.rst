@@ -1,5 +1,5 @@
-privex.helpers.common.env\_bool
-===============================
+env\_bool
+=========
 
 .. currentmodule:: privex.helpers.common
 

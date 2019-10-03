@@ -20,7 +20,7 @@ live:
 
 # Generate API docs in source/code, making sure to exclude setup.py, dist, build, and egg info etc.
 rst:
-	sphinx-apidoc -o "$(SOURCEDIR)/code/" ../ ../setup.py ../dist ../build ../privex_helpers.egg-info '**__pycache__**'
+	sphinx-apidoc -o "$(SOURCEDIR)/helpers/" ../ ../setup.py ../dist ../build ../privex_helpers.egg-info '**__pycache__**'
 
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).

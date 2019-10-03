@@ -19,6 +19,8 @@ tests
       TestGeneral
       TestIPReverseDNS
       TestParseHelpers
+      TestRedisCacheDecorator
+      TestMemoryCache
       TestRedisCache
       PrivexBaseCase
    

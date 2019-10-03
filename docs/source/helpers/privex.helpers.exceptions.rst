@@ -3,16 +3,7 @@ privex.helpers.exceptions
 
 .. automodule:: privex.helpers.exceptions
 
-   
-   
-   
 
-   
-   
-   
-
-   
-   
    .. rubric:: Exceptions
 
    .. autosummary::
@@ -20,7 +11,9 @@ privex.helpers.exceptions
       
       BaseDNSException
       BoundaryException
+      CacheNotFound
       DomainNotFound
+      NotConfigured
       InvalidDNSRecord
       PrivexException
    

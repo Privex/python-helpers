@@ -14,11 +14,13 @@ tests.TestRedisCache
    .. autosummary::
    
 
-      ~TestRedisCache.setUp
-      ~TestRedisCache.tearDown
-      ~TestRedisCache.test_rcache_callable
-      ~TestRedisCache.test_rcache_rand
-      ~TestRedisCache.test_rcache_rand_dynamic
+      ~TestRedisCache.setUpClass
+      ~TestRedisCache.tearDownClass
+      ~TestRedisCache.test_cache_expire
+      ~TestRedisCache.test_cache_remove
+      ~TestRedisCache.test_cache_set
+      ~TestRedisCache.test_cache_update_timeout
+      ~TestRedisCache.test_cache_update_timeout_raise
    
    
 
@@ -28,11 +30,6 @@ tests.TestRedisCache
 
    .. autosummary::
    
-      ~TestRedisCache.empty_lst
-      ~TestRedisCache.empty_vals
-      ~TestRedisCache.empty_zero
-      ~TestRedisCache.falsey
-      ~TestRedisCache.falsey_empty
-      ~TestRedisCache.truthy
+      ~TestRedisCache.cache_keys
    
    

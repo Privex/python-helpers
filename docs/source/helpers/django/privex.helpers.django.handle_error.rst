@@ -1,5 +1,5 @@
-privex.helpers.django.handle\_error
-===================================
+handle\_error
+=============
 
 .. currentmodule:: privex.helpers.django
 

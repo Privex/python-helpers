@@ -1,5 +1,5 @@
-privex.helpers.exceptions.DomainNotFound
-========================================
+DomainNotFound
+==============
 
 .. currentmodule:: privex.helpers.exceptions
 
