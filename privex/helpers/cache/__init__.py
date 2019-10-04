@@ -123,7 +123,12 @@ from typing import Any, Optional, Union, Type
 
 from privex.helpers.cache.CacheAdapter import CacheAdapter
 from privex.helpers.cache.MemoryCache import MemoryCache
-from privex.helpers.cache.RedisCache import RedisCache
+
+try:
+    from privex.helpers.cache.RedisCache import RedisCache
+except ImportError:
+    pass
+
 from privex.helpers.exceptions import NotConfigured, CacheNotFound
 from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
 

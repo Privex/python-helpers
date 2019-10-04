@@ -64,7 +64,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '1.3.2'
+VERSION = '1.3.3'
 
 
 class ImproperlyConfigured(Exception):
@@ -98,8 +98,12 @@ from privex.helpers.decorators import *
 from privex.helpers.net import *
 from privex.helpers.exceptions import *
 from privex.helpers.plugin import *
-from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, RedisCache, cached
-
+from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, cached
+try:
+    from privex.helpers.cache.RedisCache import RedisCache
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "RedisCache", not loading RedisCache')
+    pass
 try:
     from privex.helpers.asyncx import *
 except ImportError:
