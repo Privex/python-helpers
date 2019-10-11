@@ -38,6 +38,7 @@ Network related helper code
 
 """
 import logging
+import subprocess
 from privex.helpers.exceptions import BoundaryException
 from ipaddress import ip_address, IPv4Address, IPv6Address
 from typing import Union
@@ -212,3 +213,18 @@ def ip_is_v6(ip: str) -> bool:
     :return bool: True if IPv6, False if not (i.e. probably IPv4)
     """
     return type(ip_address(ip)) == IPv6Address
+
+def ping(ip: str, timeout: int = 30) -> bool:
+    """
+    Sends a ping to a given IP
+
+    :param str ip: An IP address as a string, e.g. 192.168.1.1
+    :param int timeout: Number of seconds to wait for a response from the ping before timing out
+    :raises ValueError: When the given IP address ``ip`` is invalid or ``timeout`` < 1
+    :return bool: True if ping got a response from the given IP, False if not
+    """
+    ip_obj = ip_address(ip)   # verify IP is valid (this will throw if it isn't)
+    if timeout < 1:
+        raise ValueError('timeout value cannot be less than 1 second')
+    with subprocess.Popen(["/bin/ping", "-c1", "-w{}".format(timeout), ip], stdout=subprocess.PIPE) as proc:
+        return 'bytes from {}'.format(ip) in proc.stdout.read().decode('utf-8')
