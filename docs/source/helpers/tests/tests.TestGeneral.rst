@@ -81,6 +81,7 @@ TestGeneral
       ~TestGeneral.test_async_decorator
       ~TestGeneral.test_async_decorator_return
       ~TestGeneral.test_chunked
+      ~TestGeneral.test_ping
       ~TestGeneral.test_retry_on_err
       ~TestGeneral.test_retry_on_err_return
       ~TestGeneral.test_run_sync

@@ -16,7 +16,7 @@ privex.helpers.net
       ip_is_v4
       ip_is_v6
       ip_to_rdns
-   
+      ping 
    
 
    

@@ -82,7 +82,7 @@ from time import sleep
 
 from privex import helpers
 from privex.loghelper import LogHelper
-from privex.helpers import ip_to_rdns, BoundaryException, plugin, r_cache, random_str, CacheAdapter, env_bool
+from privex.helpers import ping, ip_to_rdns, BoundaryException, plugin, r_cache, random_str, CacheAdapter, env_bool
 
 if env_bool('DEBUG', False) is True:
     LogHelper('privex.helpers', level=logging.DEBUG).add_console_handler(logging.DEBUG)
@@ -426,7 +426,7 @@ class TestCacheDecoratorRedis(TestCacheDecoratorMemory):
     @classmethod
     def setUpClass(cls):
         if not plugin.HAS_REDIS:
-            print('The package "redis" is not installed, skipping Redis dependent tests.')
+            print(f'The package "redis" is not installed, skipping Redis dependent tests ({cls.__name__}).')
             return cls.tearDownClass()
         helpers.cache.adapter_set(helpers.RedisCache())
 
@@ -437,6 +437,17 @@ class TestGeneral(PrivexBaseCase):
     def setUp(self):
         self.tries = 0
     
+    def test_ping(self):
+        """Test success & failure cases for ping function, as well as input validation"""
+        with self.assertRaises(ValueError):
+            ping('127.0.0.1', -1)
+        with self.assertRaises(ValueError):
+            ping('127.0.0.1', 0)
+        with self.assertRaises(ValueError):
+            ping('notavalidip', 1)
+        self.assertTrue(ping('127.0.0.1', 3))
+        self.assertFalse(ping('192.0.2.0', 3))
+
     def test_chunked(self):
         """Create a 20 element long list, split it into 4 chunks, and verify the chunks are correctly made"""
         x = list(range(0, 20))
@@ -602,6 +613,9 @@ class TestRedisCache(TestMemoryCache):
     @classmethod
     def setUpClass(cls):
         """Set the current cache adapter to an instance of RedisCache() and make it available through ``self.cache``"""
+        if not plugin.HAS_REDIS:
+            print(f'The package "redis" is not installed, skipping Redis dependent tests ({cls.__name__}).')
+            return cls.tearDownClass()
         helpers.cache.adapter_set(helpers.RedisCache())
         cls.cache = helpers.cache
 
