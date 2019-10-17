@@ -426,7 +426,7 @@ class TestCacheDecoratorRedis(TestCacheDecoratorMemory):
     @classmethod
     def setUpClass(cls):
         if not plugin.HAS_REDIS:
-            print('The package "redis" is not installed, skipping Redis dependent tests (%s).' % (cls.__name__,))
+            print(f'The package "redis" is not installed, skipping Redis dependent tests ({cls.__name__}).')
             return cls.tearDownClass()
         helpers.cache.adapter_set(helpers.RedisCache())
 
@@ -614,7 +614,7 @@ class TestRedisCache(TestMemoryCache):
     def setUpClass(cls):
         """Set the current cache adapter to an instance of RedisCache() and make it available through ``self.cache``"""
         if not plugin.HAS_REDIS:
-            print('The package "redis" is not installed, skipping Redis dependent tests (%s).' % (cls.__name__,))
+            print(f'The package "redis" is not installed, skipping Redis dependent tests ({cls.__name__}).')
             return cls.tearDownClass()
         helpers.cache.adapter_set(helpers.RedisCache())
         cls.cache = helpers.cache
