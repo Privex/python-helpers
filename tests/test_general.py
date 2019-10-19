@@ -42,7 +42,7 @@ import platform
 import warnings
 
 from privex import helpers
-from privex.helpers import ping
+from privex.helpers import ping, NetworkUnreachable
 from tests.base import PrivexBaseCase
 
 
@@ -66,6 +66,9 @@ class TestGeneral(PrivexBaseCase):
         except NotImplementedError as e:
             warnings.warn(f"Skipping test TestGeneral.test_ping as platform is not supported: {str(e)}")
             return
+        except NetworkUnreachable as e:
+            warnings.warn(f"Skipping test TestGeneral.test_ping as network is unavailable: \"{str(e)}\"")
+            return
 
     def test_ping_v6(self):
         """Test success & failure cases for ping function with IPv6, as well as input validation"""
@@ -80,6 +83,9 @@ class TestGeneral(PrivexBaseCase):
             self.assertFalse(ping('fd06:dead::beef:ab12', 3))
         except NotImplementedError as e:
             warnings.warn(f"Skipping test TestGeneral.test_ping_v6 as platform is not supported: \"{str(e)}\"")
+            return
+        except NetworkUnreachable as e:
+            warnings.warn(f"Skipping test TestGeneral.test_ping_v6 as network is unavailable: \"{str(e)}\"")
             return
 
     def _check_asn(self, asn, expected_name):

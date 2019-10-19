@@ -40,7 +40,7 @@ Network related helper code
 import logging
 import platform
 import subprocess
-from privex.helpers.exceptions import BoundaryException
+from privex.helpers.exceptions import BoundaryException, NetworkUnreachable
 from privex.helpers import plugin
 from ipaddress import ip_address, IPv4Address, IPv6Address
 from typing import Union
@@ -48,7 +48,7 @@ from typing import Union
 log = logging.getLogger(__name__)
 
 try:
-    from dns.resolver import Resolver, NoAnswer
+    from dns.resolver import Resolver, NoAnswer, NXDOMAIN
     
     def asn_to_name(as_number: Union[int, str], quiet: bool = True) -> str:
         """
@@ -83,7 +83,7 @@ try:
                 asname = str(res[0]).strip('"').split('|')[-1:][0].strip()
                 return str(asname)
             raise NoAnswer('privex.helpers.net.asn_to_name returned no results.')
-        except NoAnswer:
+        except (NoAnswer, NXDOMAIN):
             if quiet:
                 return 'Unknown ASN'
             raise KeyError('ASN {} was not found, or server did not respond.'.format(as_number))
@@ -262,5 +262,10 @@ def ping(ip: str, timeout: int = 30) -> bool:
     if platform.system() not in opts:
         raise NotImplementedError(f"{__name__}.ping is not fully supported on platform '{platform.system()}'...")
     
-    with subprocess.Popen(opts[platform.system()] + [ip], stdout=subprocess.PIPE) as proc:
-        return 'bytes from {}'.format(ip) in proc.stdout.read().decode('utf-8')
+    with subprocess.Popen(opts[platform.system()] + [ip], stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+        out, err = proc.communicate()
+        err = err.decode('utf-8')
+        if 'network is unreachable' in err.lower():
+            raise NetworkUnreachable(f'Got error from ping: "{err}"')
+        
+        return 'bytes from {}'.format(ip) in out.decode('utf-8')

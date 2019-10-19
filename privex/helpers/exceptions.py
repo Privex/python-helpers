@@ -98,3 +98,11 @@ class NotConfigured(PrivexException):
     
     Example: Attempting to use a database dependant function/method without having configured any database details.
     """
+
+
+class NetworkUnreachable(PrivexException):
+    """
+    Thrown when a network interface or IP version (e.g. IPv4/v6) is unavailable.
+    
+    Example: when running ``ping`` with an IPv6 address on a system which has no IPv6.
+    """
