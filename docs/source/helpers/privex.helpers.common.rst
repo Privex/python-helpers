@@ -21,6 +21,7 @@ privex.helpers.common
       env_keyval
       is_false
       is_true
+      inject_items
       parse_csv
       parse_keyval
       random_str
@@ -32,7 +33,8 @@ privex.helpers.common
    .. rubric:: Classes
 
    .. autosummary::
-   
+      :toctree: common
+
       ErrHelpParser
       Dictable
    

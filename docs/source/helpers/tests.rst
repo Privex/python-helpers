@@ -1,26 +1,23 @@
-tests
-=====
+How to use the unit tests
+-------------------------
 
 .. automodule:: tests
-   
-   
-   .. rubric:: Classes
 
-   .. autosummary::
-      :toctree: tests
-      
-      EmptyIter
-      TestBoolHelpers
-      TestGeneral
-      TestIPReverseDNS
-      TestParseHelpers
-      TestCacheDecoratorMemory
-      TestCacheDecoratorRedis
-      TestMemoryCache
-      TestRedisCache
-      PrivexBaseCase
-   
-   
+Unit Test List / Overview
+-------------------------
+
+.. autosummary::
+    :toctree: tests
+
+    tests.base
+    tests.test_bool
+    tests.test_cache
+    tests.test_general
+    tests.test_parse
+    tests.test_rdns
+
+
+
 
    
    

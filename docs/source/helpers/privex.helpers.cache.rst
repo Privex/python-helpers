@@ -1,5 +1,10 @@
-privex.helpers.cache
-====================
+Cache Abstraction Layer
+=======================
+
+**Module:** ``privex.helpers.cache``
+
+Classes
+^^^^^^^
 
 .. autosummary::
     :toctree: cache
@@ -10,7 +15,7 @@ privex.helpers.cache
 
 
 Functions
----------
+^^^^^^^^^
 
 .. automodule:: privex.helpers.cache
 

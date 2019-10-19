@@ -38,15 +38,18 @@ Network related helper code
 
 """
 import logging
+import platform
 import subprocess
 from privex.helpers.exceptions import BoundaryException
+from privex.helpers import plugin
 from ipaddress import ip_address, IPv4Address, IPv6Address
 from typing import Union
 
 log = logging.getLogger(__name__)
 
 try:
-    from dns.resolver import Resolver
+    from dns.resolver import Resolver, NoAnswer
+    
     def asn_to_name(as_number: Union[int, str], quiet: bool = True) -> str:
         """
         Look up an integer Autonomous System Number and return the human readable
@@ -71,20 +74,26 @@ try:
         :raises KeyError:         Raised when a lookup returns no results, and ``quiet`` is set to False.
         :return str as_name:      The name and country code of the ASN, e.g. 'PRIVEX, SE'
         """
-
-        res = Resolver().query('AS{}.asn.cymru.com'.format(as_number), "TXT")
-        if len(res) > 0:
-            # res[0] is formatted like such: "15169 | US | arin | 2000-03-30 | GOOGLE - Google LLC, US"
-            # with literal quotes. we need to strip them, split by pipe, extract the last element, then strip spaces.
-            asname = str(res[0]).strip('"').split('|')[-1:][0].strip()
-            return str(asname)
-        if quiet:
-            return 'Unknown ASN'
-        raise KeyError('ASN {} was not found, or server did not respond.'.format(as_number))
+        
+        try:
+            res = Resolver().query('AS{}.asn.cymru.com'.format(as_number), "TXT")
+            if len(res) > 0:
+                # res[0] is formatted like such: "15169 | US | arin | 2000-03-30 | GOOGLE - Google LLC, US" with
+                # literal quotes. we need to strip them, split by pipe, extract the last element, then strip spaces.
+                asname = str(res[0]).strip('"').split('|')[-1:][0].strip()
+                return str(asname)
+            raise NoAnswer('privex.helpers.net.asn_to_name returned no results.')
+        except NoAnswer:
+            if quiet:
+                return 'Unknown ASN'
+            raise KeyError('ASN {} was not found, or server did not respond.'.format(as_number))
+    
+    plugin.HAS_DNSPYTHON = True
     
 except ImportError:
     log.debug('privex.helpers.net failed to import "dns.resolver" (pypi package "dnspython"), skipping some helpers')
     pass
+
 
 def ip_to_rdns(ip: str, boundary: bool = False, v6_boundary: int = 32, v4_boundary: int = 24) -> str:
     """
@@ -176,7 +185,7 @@ def ip6_to_rdns(ip_obj: IPv6Address, v6_boundary: int = 32, boundary: bool = Fal
     you have a specific need for this one.
 
     :param IPv6Address ip_obj: An IPv4 ip_address() object to get the rDNS domain for
-    :param int v4_boundary: 8-128 bits. If ``boundary`` is True, return the base rDNS domain at this boundary.
+    :param int v6_boundary: 8-128 bits. If ``boundary`` is True, return the base rDNS domain at this boundary.
     :param bool boundary: If True, cut off the rDNS domain to the given ``v6_boundary``
     :return str rdns_domain: ip6.arpa format, e.g. ``0.8.e.f.ip6.arpa``
     """
@@ -204,6 +213,7 @@ def ip_is_v4(ip: str) -> bool:
     """
     return type(ip_address(ip)) == IPv4Address
 
+
 def ip_is_v6(ip: str) -> bool:
     """
     Determines whether an IP address is IPv6 or not
@@ -214,17 +224,43 @@ def ip_is_v6(ip: str) -> bool:
     """
     return type(ip_address(ip)) == IPv6Address
 
+
 def ping(ip: str, timeout: int = 30) -> bool:
     """
-    Sends a ping to a given IP
+    Sends a ping to a given IPv4 / IPv6 address. Tested with IPv4+IPv6 using ``iputils-ping`` on Linux, as well as the
+    default IPv4 ``ping`` utility on Mac OSX (Mojave, 10.14.6).
+    
+    Fully supported when using Linux with the ``iputils-ping`` package. Only IPv4 support on Mac OSX.
+    
+    **Example Usage**::
+    
+        >>> from privex.helpers import ping
+        >>> if ping('127.0.0.1', 5) and ping('::1', 10):
+        ...     print('Both 127.0.0.1 and ::1 are up')
+        ... else:
+        ...     print('127.0.0.1 or ::1 failed to respond to a ping within the given timeout.')
+    
+    **Known Incompatibilities**:
+    
+     * NOT compatible with IPv6 addresses on OSX due to the lack of a timeout argument with ``ping6``
+     * NOT compatible with IPv6 addresses when using ``inetutils-ping`` on Linux due to separate ``ping6`` command
 
-    :param str ip: An IP address as a string, e.g. 192.168.1.1
-    :param int timeout: Number of seconds to wait for a response from the ping before timing out
+    :param str ip: An IP address as a string, e.g. ``192.168.1.1`` or ``2a07:e00::1``
+    :param int timeout: (Default: 30) Number of seconds to wait for a response from the ping before timing out
     :raises ValueError: When the given IP address ``ip`` is invalid or ``timeout`` < 1
-    :return bool: True if ping got a response from the given IP, False if not
+    :return bool: ``True`` if ping got a response from the given IP, ``False`` if not
     """
     ip_obj = ip_address(ip)   # verify IP is valid (this will throw if it isn't)
     if timeout < 1:
         raise ValueError('timeout value cannot be less than 1 second')
-    with subprocess.Popen(["/bin/ping", "-c1", "-w{}".format(timeout), ip], stdout=subprocess.PIPE) as proc:
+    opts4 = {
+        'Linux': ["/bin/ping", "-c1", f"-w{timeout}"],
+        'Darwin': ["/sbin/ping", "-c1", f"-t{timeout}"]
+    }
+    opts6 = {'Linux':  ["/bin/ping", "-c1", f"-w{timeout}"]}
+    opts = opts4 if ip_is_v4(ip_obj) else opts6
+    if platform.system() not in opts:
+        raise NotImplementedError(f"{__name__}.ping is not fully supported on platform '{platform.system()}'...")
+    
+    with subprocess.Popen(opts[platform.system()] + [ip], stdout=subprocess.PIPE) as proc:
         return 'bytes from {}'.format(ip) in proc.stdout.read().decode('utf-8')

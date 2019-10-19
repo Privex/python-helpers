@@ -52,6 +52,9 @@ log = logging.getLogger(__name__)
 HAS_REDIS = False
 """If the ``redis`` module was imported successfully, this will change to True."""
 
+HAS_DNSPYTHON = False
+"""If the ``dns.resolver`` module was imported successfully, this will change to True."""
+
 __STORE = {}
 """This ``dict`` is used to store initialised classes for connections to databases, APIs etc."""
 

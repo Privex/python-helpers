@@ -1,5 +1,7 @@
 .. _Privex Python Helpers documentation:
 
+
+
 Privex Python Helpers's documentation
 =================================================
 
@@ -20,9 +22,61 @@ a new commit is pushed to the `Github Project`_
 .. _Privex's Python Helpers: https://github.com/Privex/python-helpers
 .. _Github Project: https://github.com/Privex/python-helpers
 
+.. contents::
 
-Contents
-=========
+
+Quick install
+-------------
+
+**Installing with** `Pipenv`_ **(recommended)**
+
+.. code-block:: bash
+
+    pipenv install privex-helpers
+
+
+**Installing with standard** ``pip3``
+
+.. code-block:: bash
+
+    pip3 install privex-helpers
+
+
+
+.. _Pipenv: https://pipenv.kennethreitz.org/en/latest/
+
+
+
+
+Python Module Overview
+----------------------
+
+Privex's Python Helpers is organised into various sub-modules to make it easier to find the
+functions/classes you want to use, and to avoid having to load the entire module (though it's lightweight).
+
+With the exception of :mod:`privex.helpers.django` (Django gets upset if certain django modules are imported before
+it's initialised), **all functions/classes are imported within the** ``__init__`` **file,** allowing you to simply type:
+
+.. code-block:: python
+
+    from privex.helpers import empty, run_sync, asn_to_name
+
+Instead of having to import the functions from each individual module:
+
+.. code-block:: python
+
+    from privex.helpers.common import empty
+    from privex.helpers.asyncx import run_sync
+    from privex.helpers.net import asn_to_name
+
+Below is a listing of the sub-modules available in ``privex-helpers`` with a short description of what each module
+contains.
+
+.. include:: ./helpers/index.rst
+
+
+All Documentation
+=================
 
 .. toctree::
    :maxdepth: 8
@@ -30,6 +84,7 @@ Contents
 
    self
    install
+   examples
 
 
 .. toctree::
@@ -37,6 +92,11 @@ Contents
    :caption: Code Documentation:
 
    helpers/index
+
+.. toctree::
+   :caption: Unit Testing
+
+   helpers/tests
 
 
 Indices and tables

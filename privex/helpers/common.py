@@ -376,6 +376,31 @@ def chunked(iterable, n):
     return (iterable[i * chunksize:i * chunksize + chunksize] for i in range(n))
 
 
+def inject_items(items: list, dest_list: list, position: int) -> List[str]:
+    """
+    Inject a list ``items`` after a certain element in ``dest_list``.
+    
+    **NOTE:** This does NOT alter ``dest_list`` - it returns a **NEW list** with ``items`` injected after the
+    given ``position`` in ``dest_list``.
+    
+    **Example Usage**::
+
+        >>> x = ['a', 'b', 'e', 'f', 'g']
+        >>> y = ['c', 'd']
+        >>> # Inject the list 'y' into list 'x' after element 1 (b)
+        >>> inject_items(y, x, 1)
+        ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+    
+    :param list items: A list of items to inject into ``dest_list``
+    :param list dest_list: The list to inject ``items`` into
+    :param int position: Inject ``items`` after this element (0 = 1st item) in ``dest_list``
+    :return List[str] injected: :py:attr:`.dest_list` with the passed ``items`` list injected at ``position``
+    """
+    before = list(dest_list[0:position+1])
+    after = list(dest_list[position+1:])
+    return before + items + after
+
+
 class ErrHelpParser(argparse.ArgumentParser):
     """
     ErrHelpParser - Use this instead of :py:class:`argparse.ArgumentParser` to automatically get full

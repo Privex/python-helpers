@@ -2,7 +2,7 @@
 
 [![Documentation Status](https://readthedocs.org/projects/python-helpers/badge/?version=latest)](https://python-helpers.readthedocs.io/en/latest/?badge=latest) 
 [![Build Status](https://travis-ci.com/Privex/python-helpers.svg?branch=master)](https://travis-ci.com/Privex/python-helpers) 
-[![Codecov](https://img.shields.io/codecov/c/github/Privex/python-helpers)](https://codecov.io/gh/Privex/python-helpers)  
+[![Codecov](https://img.shields.io/codecov/c/github/Privex/python-helpers)](https://codecov.io/gh/Privex/python-helpers)
 [![PyPi Version](https://img.shields.io/pypi/v/privex-helpers.svg)](https://pypi.org/project/privex-helpers/)
 ![License Button](https://img.shields.io/pypi/l/privex-helpers) 
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/privex-helpers)
@@ -12,7 +12,7 @@
 This small Python 3 module is comprised of various small functions and classes that were often
 copied and pasted across our projects.
 
-Each of these "helper" functions, decorators or classes are otherwise too small to be independantly
+Each of these "helper" functions, decorators or classes are otherwise too small to be independently
 packaged, and so we've amalgamated them into this PyPi package, `privex-helpers`.
 
 
@@ -34,7 +34,15 @@ packaged, and so we've amalgamated them into this PyPi package, `privex-helpers`
 
 # Install
 
-### Download and install from PyPi using pip (recommended)
+### Download and install from PyPi 
+
+**Using [Pipenv](https://pipenv.kennethreitz.org/en/latest/) (recommended)**
+
+```sh
+pipenv install privex-helpers
+```
+
+**Using standard Python pip** 
 
 ```sh
 pip3 install privex-helpers

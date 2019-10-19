@@ -1,5 +1,3 @@
-Code Docs for each helper module
-=================================
 
 .. autosummary::
     :toctree:
@@ -14,10 +12,4 @@ Code Docs for each helper module
     privex.helpers.plugin
     privex.helpers.settings
 
-Unit Tests
-==========
 
-.. autosummary::
-    :toctree:
-
-    tests

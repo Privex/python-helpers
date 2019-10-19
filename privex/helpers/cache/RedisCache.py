@@ -15,7 +15,7 @@ if plugin.HAS_REDIS:
     
     class RedisCache(CacheAdapter):
         """
-        An Redis backed implementation of :class:`.CacheAdapter`. Uses the global Redis instance from
+        A Redis backed implementation of :class:`.CacheAdapter`. Uses the global Redis instance from
         :py:mod:`privex.helpers.plugin` by default, however custom Redis instances can be passed in via
         the constructor argument ``redis_instance``.
         

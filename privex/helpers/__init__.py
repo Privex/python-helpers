@@ -51,54 +51,13 @@ X11 / MIT License
 
 import logging
 from privex.loghelper import LogHelper
-
-
-# Set up logging for the entire module ``privex.helpers`` . Since this is a package, we don't add any
-# console or file logging handlers, we purely just set our minimum logging level to WARNING to avoid
-# spamming the logs of any application importing it.
-def _setup_logging(level=logging.WARNING):
-    lh = LogHelper(__name__, level=level)
-    return lh.get_logger()
-
-
-log = _setup_logging()
-name = 'helpers'
-
-VERSION = '1.3.4'
-
-
-class ImproperlyConfigured(Exception):
-    """Placeholder in-case this fails to import from django.core.exceptions"""
-    pass
-
-
-class AppRegistryNotReady(Exception):
-    """Placeholder in-case this fails to import from django.core.exceptions"""
-    pass
-
-
-# Only import the Django functions if Django is actually installed
-try:
-    import django
-    from django.core.exceptions import ImproperlyConfigured, AppRegistryNotReady
-    from privex.helpers.django import *
-except ImportError:
-    log.debug('privex.helpers __init__ failed to import "django", not loading django helpers')
-    pass
-except (ImproperlyConfigured, AppRegistryNotReady):
-    log.debug('privex.helpers __init__ failed to import "django", not loading django helpers')
-    pass
-except Exception:
-    log.debug('privex.helpers __init__ failed to import "django", (unknown exception) not loading django helpers')
-    pass
-
-
 from privex.helpers.common import *
 from privex.helpers.decorators import *
 from privex.helpers.net import *
 from privex.helpers.exceptions import *
 from privex.helpers.plugin import *
 from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, cached
+
 try:
     from privex.helpers.cache.RedisCache import RedisCache
 except ImportError:
@@ -109,4 +68,22 @@ try:
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "asyncx", not loading async helpers')
     pass
+
+
+def _setup_logging(level=logging.WARNING):
+    """
+    Set up logging for the entire module ``privex.helpers`` . Since this is a package, we don't add any
+    console or file logging handlers, we purely just set our minimum logging level to WARNING to avoid
+    spamming the logs of any application importing it.
+    """
+    lh = LogHelper(__name__, level=level)
+    return lh.get_logger()
+
+
+log = _setup_logging()
+name = 'helpers'
+
+VERSION = '1.4.0'
+
+
 
