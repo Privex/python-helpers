@@ -145,7 +145,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'PrivexHelpers', 'CryptoToken Converter Documentation',
+    (master_doc, 'PrivexHelpers', 'Privex Python Helpers Documentation',
      author, 'PrivexHelpers', 'One line description of project.',
      'Miscellaneous'),
 ]
@@ -174,57 +174,9 @@ epub_exclude_files = ['search.html']
 # -- Options for intersphinx extension ---------------------------------------
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3.6', None),
+    'cryptography': ('https://cryptography.io/en/latest/', None),
+    'django': ('http://django.readthedocs.org/en/latest/', None),
+}
 
-
-
-"""
-Taken from https://stackoverflow.com/a/30783465/2648583
-"""
-# from sphinx.ext.autosummary import Autosummary
-# from sphinx.ext.autosummary import get_documenter
-# from docutils.parsers.rst import directives
-# from sphinx.util.inspect import safe_getattr
-# import re
-
-# class AutoAutoSummary(Autosummary):
-
-#     option_spec = {
-#         'methods': directives.unchanged,
-#         'attributes': directives.unchanged
-#     }
-
-#     required_arguments = 1
-
-#     @staticmethod
-#     def get_members(obj, typ, include_public=None):
-#         if not include_public:
-#             include_public = []
-#         items = []
-#         for name in dir(obj):
-#             try:
-#                 documenter = get_documenter(safe_getattr(obj, name), obj)
-#             except AttributeError:
-#                 continue
-#             if documenter.objtype == typ:
-#                 items.append(name)
-#         public = [x for x in items if x in include_public or not x.startswith('_')]
-#         return public, items
-
-#     def run(self):
-#         clazz = str(self.arguments[0])
-#         try:
-#             (module_name, class_name) = clazz.rsplit('.', 1)
-#             m = __import__(module_name, globals(), locals(), [class_name])
-#             c = getattr(m, class_name)
-#             if 'methods' in self.options:
-#                 _, methods = self.get_members(c, 'method', ['__init__'])
-
-#                 self.content = ["~%s.%s" % (clazz, method) for method in methods if not method.startswith('_')]
-#             if 'attributes' in self.options:
-#                 _, attribs = self.get_members(c, 'attribute')
-#                 self.content = ["~%s.%s" % (clazz, attrib) for attrib in attribs if not attrib.startswith('_')]
-#         finally:
-#             return super(AutoAutoSummary, self).run()
-# def setup(app):
-#     app.add_directive('autoautosummary', AutoAutoSummary)

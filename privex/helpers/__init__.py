@@ -68,6 +68,11 @@ try:
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "asyncx", not loading async helpers')
     pass
+try:
+    from privex.helpers.crypto import *
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "crypto", not loading cryptography helpers')
+    pass
 
 
 def _setup_logging(level=logging.WARNING):
@@ -83,7 +88,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '1.4.1'
+VERSION = '1.5.0'
 
 
 

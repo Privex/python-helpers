@@ -10,6 +10,7 @@ Django>=2
 dnspython>=1.16.0
 redis>=3.3.8
 privex-loghelper>=1.0.4
+cryptography>=2.6
 
 # Unit testing
 pytest

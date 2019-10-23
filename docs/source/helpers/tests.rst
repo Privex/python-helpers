@@ -12,6 +12,7 @@ Unit Test List / Overview
     tests.base
     tests.test_bool
     tests.test_cache
+    tests.test_crypto
     tests.test_general
     tests.test_parse
     tests.test_rdns

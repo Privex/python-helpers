@@ -106,3 +106,14 @@ class NetworkUnreachable(PrivexException):
     
     Example: when running ``ping`` with an IPv6 address on a system which has no IPv6.
     """
+
+
+class EncryptionError(PrivexException):
+    """Raised when something went wrong attempting to encrypt or decrypt a piece of data"""
+    pass
+
+
+class EncryptKeyMissing(EncryptionError):
+    """Raised when ENCRYPT_KEY is not set, or invalid"""
+    pass
+
