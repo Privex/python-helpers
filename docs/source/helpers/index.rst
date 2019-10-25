@@ -12,5 +12,6 @@
     privex.helpers.net
     privex.helpers.plugin
     privex.helpers.settings
+    privex.helpers.setuppy
 
 

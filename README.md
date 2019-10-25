@@ -32,6 +32,19 @@ packaged, and so we've amalgamated them into this PyPi package, `privex-helpers`
     +===================================================+
 ```
 
+# Table of Contents (Github README)
+
+1. [Install](#Install)
+    1.1 [Via PyPi (pip)](#download-and-install-from-pypi)
+    1.2 [Manually via Git](#alternative-manual-install-from-git)
+2. [Documentation](#documentation)
+3. [License](#License)
+4. [Example Uses](#example-uses)
+5. [Minimal Dependencies / Using package extras](#minimal-dependencies)
+6. [Unit Tests](#unit-tests)
+7. [Contributing](#contributing)
+
+
 # Install
 
 ### Download and install from PyPi 
@@ -177,7 +190,7 @@ ip_is_v6('2a07:e00::1') # True
 
 # Minimal dependencies
 
-Most of our helper code is independant, and does not result in any extra dependencies being installed. 
+Most of our helper code is independent, and does not result in any extra dependencies being installed. 
 
 Some of our helpers are dependant on external libraries or frameworks, such as Django or Flask. To avoid
 large Python packages such as Django being installed needlessly, we programatically enable/disable some
@@ -187,17 +200,68 @@ This package only requires (and automatically installs if needed) a single depen
 [privex-loghelper](https://github.com/Privex/python-loghelper) package, which itself is lightweight
 and dependency free.
 
+As of version 1.6.0 - Privex Helpers now supports **Setuptools Extras**, allowing you
+to specify extra dependencies related to privex-helpers in your requirements.txt, or when running
+**pip3 install**.
 
-Optional requirements (just `pip3 install` them depending on the helpers you require):
+```
+# full: Install all extra dependencies if they aren't already installed
+#   NOTE: Excludes the `django` extras, because Django + sub-deps weighs ~30-50mb - plus you'd normally only
+#   be using the `django` module in a Django project, where you'd have the deps installed anyway...
+#
+# crypto:   Install dependencies related to the `crypto` module
+# cache:    Install dependencies related to the `cache` module
+# django:   Install dependencies related to the `django` module
+# net:      Install dependencies related to the `net` module
+
+# Example: Install privex-helpers AND all optional dependencies (excluding django), for full functionality
+pip3 install 'privex-helpers[full]'
+
+# Example: Install privex-helpers with only the crypto and cache module dependencies
+pip3 install 'privex-helpers[cache,crypto]'
+
+# Example: Install just privex-helpers and REQUIRED dependencies (i.e. critical to basic functionality)
+pip3 install privex-helpers
+```
+
+
+Alternatively, just `pip3 install` extra packages depending on the helpers you require:
 
 ```
 # For all Django-specific helpers in privex.helpers.django
 Django
 # For certain DNS dependant helpers in privex.helpers.net
 dnspython>=1.16.0
-# For helpers such as the r_cache decorator which is dependent on Redis
+# For using Redis with the privex.helpers.cache module
 redis>=3.3.8
+# For using the privex.helpers.crypto module
+cryptography>=2.8
 ```
+
+# Unit Tests
+
+As of late October 2019, we have over 70 individual unit tests in the `tests/` folder, which are split into several
+`test_xxxx` files, with each file holding tests for a specific module or smaller area of code. This library 
+consistently maintains on average 70-80% test coverage, helping to show this package is highly tested to ensure
+reliable and robust code.
+
+We use [Travis CI](https://travis-ci.com/Privex/python-helpers) for continuous integration, which runs the test
+suite every time a new commit, tag, or branch is pushed to this Github repo.
+
+We also use [CodeCov](https://codecov.io/gh/Privex/python-helpers) which integrates with our Travis CI setup, and
+provides test coverage statistics, so ourselves and contributors can visually see how much of the code is covered
+by our unit tests 
+
+TL;Dr; Run the tests:
+
+```
+pip3 install -r docs/requirements.txt
+pytest -v
+```
+
+For more information about using the unit tests, see the 
+[How to use the unit tests](https://python-helpers.readthedocs.io/en/latest/helpers/tests.html) section of 
+the documentation. 
 
 # Contributing
 

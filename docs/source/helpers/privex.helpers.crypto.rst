@@ -1,30 +1,30 @@
 privex.helpers.crypto
 =====================
 
+**Module:** ``privex.helpers.cache``
+
+About / Using Cryptography helpers
+----------------------------------
+
 .. automodule:: privex.helpers.crypto
 
-   
-   
-   .. rubric:: Functions
 
-   .. autosummary::
-      :toctree: crypto
+Classes
+-------
 
-      isBase64
-   
-   
+.. autosummary::
+   :toctree: crypto
 
-   
-   
-   .. rubric:: Classes
+   privex.helpers.crypto.EncryptHelper.EncryptHelper
+   privex.helpers.crypto.KeyManager.KeyManager
+   privex.helpers.crypto.KeyManager.Format
 
-   .. autosummary::
-      :toctree: crypto
-   
-      EncryptHelper
-   
-   
+Modules
+-------
 
-   
-   
-   
+.. autosummary::
+   :toctree: crypto
+
+   privex.helpers.crypto.base
+
+

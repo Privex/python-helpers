@@ -3,3 +3,17 @@
 .wy-nav-content {
     max-width: 1200px !important;
 }
+
+li.toctree-l4 li.toctree-l5 > a {
+    display: none
+}
+
+li.toctree-l5.current > a {
+    display: block
+}
+
+.wy-menu-vertical li.toctree-l4.current li.toctree-l5 > a {
+    display: block;
+    background: #bdbdbd;
+    padding: .4045em 6em;
+}

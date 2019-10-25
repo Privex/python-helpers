@@ -1,0 +1,3 @@
+-r extras/cache.txt
+-r extras/net.txt
+-r extras/crypto.txt

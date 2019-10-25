@@ -16,6 +16,7 @@
 
 import os
 import sys
+import sphinx_rtd_theme
 
 # Add base directory of the project to the path
 sys.path.insert(0, os.path.abspath('../..'))
@@ -38,6 +39,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
+    'sphinx_rtd_theme',
 ]
 
 autosummary_generate = True

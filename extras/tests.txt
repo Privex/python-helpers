@@ -1,0 +1,6 @@
+# Unit testing
+pytest
+pytest-cov
+coverage
+codecov
+

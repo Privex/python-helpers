@@ -401,6 +401,28 @@ def inject_items(items: list, dest_list: list, position: int) -> List[str]:
     return before + items + after
 
 
+def byteify(data: Union[str, bytes], encoding='utf-8') -> bytes:
+    """
+    Convert a piece of data into bytes if it isn't already.
+        
+        >>> byteify("hello world")
+        b"hello world"
+    
+    """
+    return bytes(data, encoding) if type(data) is not bytes else data
+
+
+def stringify(data: Union[str, bytes], encoding='utf-8') -> str:
+    """
+    Convert a piece of data into a string (from bytes) if it isn't already.
+
+        >>> stringify(b"hello world")
+        "hello world"
+
+    """
+    return data.decode(encoding) if type(data) is bytes else data
+
+
 class ErrHelpParser(argparse.ArgumentParser):
     """
     ErrHelpParser - Use this instead of :py:class:`argparse.ArgumentParser` to automatically get full

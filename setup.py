@@ -37,11 +37,14 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 from setuptools import setup, find_packages
 from os.path import join, dirname, abspath
 from privex.helpers import VERSION
+from privex.helpers.setuppy import extras_require, reqs
 
 BASE_DIR = dirname(abspath(__file__))
 
 with open(join(BASE_DIR, "README.md"), "r") as fh:
     long_description = fh.read()
+
+extensions = ['full', 'cache', 'crypto', 'django', 'net', 'tests']
 
 setup(
     name='privex_helpers',
@@ -59,7 +62,8 @@ setup(
     install_requires=[
         'privex-loghelper>=1.0.4'
     ],
-    packages=find_packages(),
+    extras_require=extras_require(extensions),
+    packages=find_packages(exclude=['tests', 'test.*']),
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",

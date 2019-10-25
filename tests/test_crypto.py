@@ -38,7 +38,8 @@ Test cases for the :py:mod:`privex.helpers.crypto` module
 
 
 """
-from privex.helpers import EncryptHelper, EncryptKeyMissing, EncryptionError
+from privex.helpers import EncryptHelper, EncryptKeyMissing, EncryptionError, InvalidFormat
+from privex.helpers.crypto.KeyManager import KeyManager
 from tests.base import PrivexBaseCase
 
 
@@ -110,9 +111,106 @@ class TestEncryptHelper(PrivexBaseCase):
         self.assertFalse(eh.is_encrypted(self.txt))
 
 
-
-
+class TestKeyManager(PrivexBaseCase):
+    """Test :py:class:`.KeyManager` asymmetric key generation and usage"""
+    
+    def test_rsa_gen(self):
+        """Generate an RSA 2048 + 4096-bit key, check the pub/priv lengths, and confirm they're formatted correctly"""
+        priv, pub = KeyManager.generate_keypair()
+        self.assertAlmostEqual(len(priv), 1704, delta=64)
+        self.assertAlmostEqual(len(pub), 380, delta=32)
+        self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
+        self.assertIn('ssh-rsa', pub.decode('utf-8'))
         
+        priv, pub = KeyManager.generate_keypair(key_size=4096)
+        self.assertEqual(len(priv), 3272)
+        self.assertEqual(len(pub), 724)
+        self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
+        self.assertIn('ssh-rsa', pub.decode('utf-8'))
+
+    def test_ecdsa_gen(self):
+        """Generate an ECDSA keypair, check the pub/priv lengths, and confirm they're formatted correctly"""
+        priv, pub = KeyManager.generate_keypair('ecdsa')
+        self.assertAlmostEqual(len(priv), 306, delta=16)
+        self.assertAlmostEqual(len(pub), 204, delta=16)
+        self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
+        self.assertEqual('ecdsa-', pub.decode('utf-8')[0:6])
+
+    def test_ed25519_gen(self):
+        """Generate an Ed25519 keypair, check the pub/priv lengths, and confirm they're formatted correctly"""
+        priv, pub = KeyManager.generate_keypair('ed25519')
+        self.assertAlmostEqual(len(priv), 119, delta=16)
+        self.assertAlmostEqual(len(pub), 80, delta=16)
+        self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
+        self.assertEqual('ssh-ed25519', pub.decode('utf-8')[0:11])
+
+    def test_load_invalid(self):
+        """Initialise KeyManager with an invalid key to confirm it raises InvalidFormat"""
+        with self.assertRaises(InvalidFormat):
+            KeyManager('-----THIS IS NOT --- A ___ KEY')
+    
+    def test_rsa_load(self):
+        """Generate and attempt to load an RSA keypair"""
+        priv, pub = KeyManager.generate_keypair()
+        # If the keys were invalid, KeyManager should raise InvalidFormat and fail the test
+        KeyManager(priv)
+        KeyManager(pub)
+
+    def test_ecdsa_load(self):
+        """Generate and attempt to load an ECDSA keypair"""
+        priv, pub = KeyManager.generate_keypair('ecdsa')
+        # If the keys were invalid, KeyManager should raise InvalidFormat and fail the test
+        KeyManager(priv)
+        KeyManager(pub)
+
+    def test_ed25519_load(self):
+        """Generate and attempt to load an Ed25519 keypair"""
+        priv, pub = KeyManager.generate_keypair('ed25519')
+        # If the keys were invalid, KeyManager should raise InvalidFormat and fail the test
+        KeyManager(priv)
+        KeyManager(pub)
+
+    @staticmethod
+    def _sign_verify(priv, pub):
+        """Helper method to avoid duplicating sign+verify code for every algorithm"""
+        km = KeyManager(priv)  # KeyManager with private key (public key interpolated from private key)
+        km_pub = KeyManager(pub)  # KeyManager with only public key
+        sig = km.sign('hello world')  # Sign 'hello world' with the private key
+        # Verify the signature, these methods will raise InvalidSignature if it doesn't verify.
+        km_pub.verify(signature=sig, message='hello world')  # Verify with pubkey-only instance
+        km.verify(signature=sig, message='hello world')  # Verify with privkey-only instance
+    
+    def test_rsa_sign_verify(self):
+        """Attempt to sign and verify a message using an RSA keypair using :py:meth:`._sign_verify` test helper"""
+        priv, pub = KeyManager.generate_keypair()
+        self._sign_verify(priv, pub)
+
+    def test_ecdsa_sign_verify(self):
+        """Attempt to sign and verify a message using an ECDSA keypair using :py:meth:`._sign_verify` test helper"""
+        priv, pub = KeyManager.generate_keypair('ecdsa')
+        self._sign_verify(priv, pub)
+
+    def test_ed25519_sign_verify(self):
+        """Attempt to sign and verify a message using an Ed25519 keypair using :py:meth:`._sign_verify` test helper"""
+        priv, pub = KeyManager.generate_keypair('ed25519')
+        self._sign_verify(priv, pub)
+    
+    def test_rsa_encrypt_decrypt(self):
+        priv, pub = KeyManager.generate_keypair()
+        km, km_pub = KeyManager(priv), KeyManager(pub)
+        msg = 'hello world'
+        enc = km.encrypt(msg)          # Encrypt `msg` using private key KeyManager instance
+        enc_pub = km_pub.encrypt(msg)  # Encrypt `msg` using public key KeyManager instance
+        # Confirm that the encrypted data is actually different from the original message
+        self.assertNotEqual(enc, msg)
+        self.assertNotEqual(enc_pub, msg)
+        # Confirm decrypting the two encrypted `bytes` vars (and decoding to str) matches the original message
+        self.assertEqual(km.decrypt(enc).decode('utf-8'), msg)
+        self.assertEqual(km.decrypt(enc_pub).decode('utf-8'), msg)
+        
+        
+        
+
 
 
 

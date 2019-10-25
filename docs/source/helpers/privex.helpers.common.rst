@@ -10,6 +10,7 @@ privex.helpers.common
    .. autosummary::
       :toctree: common
 
+      byteify
       chunked
       dec_round
       empty
@@ -24,6 +25,7 @@ privex.helpers.common
       inject_items
       parse_csv
       parse_keyval
+      stringify
       random_str
    
    

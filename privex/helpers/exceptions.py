@@ -117,3 +117,10 @@ class EncryptKeyMissing(EncryptionError):
     """Raised when ENCRYPT_KEY is not set, or invalid"""
     pass
 
+
+class InvalidFormat(EncryptionError):
+    """
+    Raised when an invalid public/private format, or encoding is specified when serializing an asymmetric key pair
+    """
+
+
