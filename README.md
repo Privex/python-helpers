@@ -32,17 +32,168 @@ packaged, and so we've amalgamated them into this PyPi package, `privex-helpers`
     +===================================================+
 ```
 
+# Tl;Dr; Install and use Privex Helpers
+
+Install from PyPi (detailed install info at [Install](#Install) and [Using package extras](#minimal-dependencies))
+
+```sh
+pipenv install privex-helpers    # If you use pipenv (and you should!)
+pip3 install privex-helpers      # Otherwise, standard pip installation
+
+# If you're using privex-helpers in a project, then you may want to install with the "full" extras
+# which installs all optional requirements (other than Django), so you can use **everything** in privex-helpers
+pipenv install 'privex-helpers[full]'    # If you use pipenv (and you should!)
+pip3 install 'privex-helpers[full]'      # Otherwise, standard pip installation
+```
+
+Very import and basic usage (detailed examples at [Example Uses](#example-uses))
+
+```python
+from privex.helpers import is_true, empty
+if is_true('yes'):
+    print('yes is truthful')
+
+if empty(''):
+    print("'' is empty")
+```
+
 # Table of Contents (Github README)
 
-1. [Install](#Install)
-    1.1 [Via PyPi (pip)](#download-and-install-from-pypi)
-    1.2 [Manually via Git](#alternative-manual-install-from-git)
-2. [Documentation](#documentation)
-3. [License](#License)
-4. [Example Uses](#example-uses)
-5. [Minimal Dependencies / Using package extras](#minimal-dependencies)
-6. [Unit Tests](#unit-tests)
-7. [Contributing](#contributing)
+**NOTE:** The below Table of Contents is designed to work on Github. The links do NOT work on PyPi's description,
+and may not work if you're reading this README.md elsewhere.
+
+
+1. [Why use Privex Helpers?](#why-use-privex-helpers)
+
+    1.1. [Lightweight](#lightweight)
+    
+    1.2. [Keeps your code DRY (Don't repeat yourself!)](#keeps-your-code-dry-dont-repeat-yourself)
+    
+    1.3. [Makes your life just plain easier](#makes-your-life-just-plain-easier)
+    
+    1.4. [Thorough unit tests](#thorough-unit-tests)
+    
+    1.5. [Overview of what's included](#overview-of-whats-included)
+    
+2. [Install](#Install)
+
+    2.1 [Via PyPi (pip)](#download-and-install-from-pypi)
+    
+    2.2 [Manually via Git](#alternative-manual-install-from-git)
+
+3. [Documentation](#documentation)
+4. [License](#License)
+5. [Example Uses](#example-uses)
+6. [Minimal Dependencies / Using package extras](#minimal-dependencies)
+
+    6.1 [Modules with dependencies](#modules-with-dependencies)
+    
+    6.2 [Using Setuptools Extras](#using-setuptools-extras)
+
+7. [Unit Tests](#unit-tests)
+8. [Contributing](#contributing)
+
+
+# Why use Privex Helpers?
+
+Privex helpers was created with a very simple goal in mind: make developing Python applications easy, fun, simple,
+and **painless**.
+
+### Lightweight
+
+Whether you're using it in a library, or in your project, you'll be pleased to know that the `privex-helpers` and
+all of it's *required dependencies* make up less than **200kb total**. For comparison, the `Django` package alone
+(that's excluding it's dependencies) is a whopping 26 MEGABYTES.
+
+Most of `privex-helpers` can be used without any additional dependencies. Some modules, or parts of modules
+may require a certain dependency, but will cleanly disable themselves if the necessary dependency isn't available.
+
+See [Modules with dependencies](#modules-with-dependencies) to see which modules only work if you have a certain
+package installed, and modules which are dependency-free but enable additional functionality if you install
+extra packages.
+
+### Keeps your code DRY (Don't repeat yourself!)
+
+Tired of writing those same long `if` statements to check if a user entered value was some sort-of boolean value?
+Use `is_true` and `is_false` - trim those long if statements into a single function call. Less typing, and more 
+readable.
+
+### Makes your life just plain easier
+
+Writing a library and need caching? Not sure whether you should just force your users to use Redis, whether you
+should just make this a Django plugin, or write some sort-of rudimentary caching system yourself? `privex-helpers`
+includes a modular caching abstraction layer that Just Works™ out of the box, without forcing tons of dependencies on
+your users.
+
+Maybe you just need to encrypt a string, or generate an RSA keypair. But you tried taking a look at the
+popular [cryptography](https://cryptography.io/en/latest/) package docs, and it looks like you're going to be writing
+scaffolding code for hours just to do that... Say hello to `privex.helpers.crypto` - whether you're dealing with
+symmetric or asymmetric encryption, it's just **one import line, a few lines of code and you're DONE.**
+
+### Thorough unit tests
+
+Included in the `tests/` folder, is a collection of over 70 individual unit tests, which is constantly
+having more unit tests added over time.
+
+This project uses Travis for continuous integration (automatic testing with each commit), and CodeCov keeping
+track of how much of the codebase is covered by unit tests. See [Unit Tests](#unit-tests) for more details. 
+
+This ensures that `privex-helpers` is reliable and robust - if a part of the library is broken with a new update,
+then we'll be alerted shortly after pushing out the update that our tests are failing, so we can fix the issue ASAP.
+
+### Overview of what's included
+
+This is not an exhaustive list, and may sometimes be a little outdated. To see everything that's available in
+`privex-helpers` then check out the [Documentation](https://python-helpers.readthedocs.io/en/latest/index.html).
+
+ - `common` - a melting pot of functions and classes that will generally just make developing python code 100x easier, 
+   and make it 10x more readable. some of the most useful include:
+     - `empty` - checking if a value is "empty", e.g. `None`, `''`, `0`, `'0'`, `[]` etc.
+     - `is_true` - fuzzy "true" testing, checks for common forms of true, e.g. `True`, `"true"`, `"yes"`, `1`
+     - `is_false` - fuzzy "false" testing, checks for common forms of false, e.g. `False`, `"false"`, `"no"`, `0`
+     - `env_csv` - load an environment variable like a CSV, allowing for list representation in env vars
+     - `env_keyval` - load an environment variable like a key value map, allowing for tuple pair / dict 
+      representation in env vars
+     - `dec_round` - round a python `Decimal` using the built-in Quantize method, but without the hassle.
+     - `Dictable` - easily create your Python 3.7 `dataclass` from a dictionary, plus enable them to be casted
+      into a plain dict using `dict(mydataclass)`
+     - and MORE, check the [documentation!](https://python-helpers.readthedocs.io/en/latest/helpers/privex.helpers.common.html)
+
+ - `cache` - a dependency-free, framework agnostic caching layer, with support for:
+     - automatic timeouts
+     - ability to extend the timeout of a cache item (even after it's already "expired" on some cache adapters)
+     - get_or_set with callback function/method support
+     - can optionally use Redis if you'd prefer (requires an optional dependency)
+
+ - `crypto` - classes which make both symmetric and asymmetric encryption extremely easy to use
+      - `EncryptHelper` - for symmetric AES-128 encryption / decryption with a shared key, with the ability to generate 
+       either a secure random shared key, or a shared key generated from a password + salt
+      - `KeyManager` - for asymmetric signing / verification, plus encryption/decryption if you use RSA. supports 
+       generating/loading RSA, ECDSA, and Ed25519 keys, as well as outputting them in a variety of formats 
+       and encodings.
+
+ - `setuppy` - a module with various functions to help with making python packages or dealing with 
+   requirements.txt files
+ 
+ - `decorators` - various decorators to simplify your code
+     - `retry_on_err` - automatically re-run a function/method when exceptions are thrown, with a variety of
+      customization available
+     - `r_cache` - automatic caching of a function/property, with support for caching based on parameters or a lambda
+ 
+ - `net` - various networking functions, including:
+     - handling IP addresses
+     - generating reverse DNS records
+     - looking up ASN names based on their number
+     - checking if an IP is up (via ping) - with both IPv4 and IPv6 support
+ 
+ - `asyncx` - various async helper functions, to help synchronous code play nicely with async code
+ - `django` various Django helper functions, most of which you'll probably question "why is this not built into django?" 
+ - `exceptions` - various exception classes, most of which are used by privex-helpers functions/classes, but can be 
+   used in any python project to save you re-inventing an exception name
+
+     
+
+
 
 
 # Install
@@ -200,7 +351,9 @@ This package only requires (and automatically installs if needed) a single depen
 [privex-loghelper](https://github.com/Privex/python-loghelper) package, which itself is lightweight
 and dependency free.
 
-As of version 1.6.0 - Privex Helpers now supports **Setuptools Extras**, allowing you
+### Using Setuptools Extras
+
+As of version 2.0.0 - Privex Helpers now supports **Setuptools Extras**, allowing you
 to specify extra dependencies related to privex-helpers in your requirements.txt, or when running
 **pip3 install**.
 
@@ -237,6 +390,22 @@ redis>=3.3.8
 # For using the privex.helpers.crypto module
 cryptography>=2.8
 ```
+
+### Modules with dependencies
+
+**Modules which require a dependency to use them**
+
+ - `crypto` - This module won't work at all without the `cryptography` library (or `privex-helpers[crypto]`)
+ - `django` - Django related helpers obviously don't work without `Django` installed. But since they're intended
+    for use within a Django project, you'd already have `Django` installed anyway if you needed them :)
+
+**Dynamic modules which simply enable additional features if you install certain packages**
+
+ - `net` - Some functions are dependent on `dnspython` (or `privex-helpers[net]`), but the majority of the module 
+   is dependency-free
+ - `cache` - The cache layer works just fine without any dependencies. If you're using `privex-helper` within a project,
+   then you may want to install `redis` (or `privex-helpers[cache]`) to make the Redis cache adapter available.
+
 
 # Unit Tests
 
@@ -297,4 +466,6 @@ If you'd rather read the whole legal text, it should be included as `privex_cont
 
 # Thanks for reading!
 
-**If this project has helped you, consider [grabbing a VPS or Dedicated Server from Privex](https://www.privex.io) - prices start at as little as US$8/mo (we take cryptocurrency!)**
+**If this project has helped you, consider [grabbing a VPS or Dedicated Server from Privex](https://www.privex.io).**
+
+**Prices start at as little as US$8/mo (we take cryptocurrency!)**
