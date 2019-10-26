@@ -123,8 +123,8 @@ class TestKeyManager(PrivexBaseCase):
         self.assertIn('ssh-rsa', pub.decode('utf-8'))
         
         priv, pub = KeyManager.generate_keypair(key_size=4096)
-        self.assertEqual(len(priv), 3272)
-        self.assertEqual(len(pub), 724)
+        self.assertAlmostEqual(len(priv), 3272, delta=64)
+        self.assertAlmostEqual(len(pub), 724, delta=32)
         self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
         self.assertIn('ssh-rsa', pub.decode('utf-8'))
 
