@@ -2,7 +2,7 @@ privex.helpers.django
 =====================
 
 .. automodule:: privex.helpers.django
-
+   :noindex:
    
    
    .. rubric:: Functions
@@ -21,6 +21,5 @@ privex.helpers.django
    
    
 
-   
    
    

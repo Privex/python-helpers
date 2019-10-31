@@ -41,7 +41,7 @@ pipenv install privex-helpers    # If you use pipenv (and you should!)
 pip3 install privex-helpers      # Otherwise, standard pip installation
 
 # If you're using privex-helpers in a project, then you may want to install with the "full" extras
-# which installs all optional requirements (other than Django), so you can use **everything** in privex-helpers
+# which installs all optional requirements (other than Django/tests), so you can use **everything** in privex-helpers
 pipenv install 'privex-helpers[full]'    # If you use pipenv (and you should!)
 pip3 install 'privex-helpers[full]'      # Otherwise, standard pip installation
 ```
@@ -89,6 +89,8 @@ and may not work if you're reading this README.md elsewhere.
     6.1 [Modules with dependencies](#modules-with-dependencies)
     
     6.2 [Using Setuptools Extras](#using-setuptools-extras)
+    
+    6.3 [Installing extras when using the cloned repository](#installing-extras-when-using-the-cloned-repository)
 
 7. [Unit Tests](#unit-tests)
 8. [Contributing](#contributing)
@@ -174,6 +176,16 @@ This is not an exhaustive list, and may sometimes be a little outdated. To see e
 
  - `setuppy` - a module with various functions to help with making python packages or dealing with 
    requirements.txt files
+     - `common.extras_require` - A helper function which allows you to generate an `extras_require` setting in
+       setup.py simply by passing a list of extras names, e.g. `extras_require=extras_require(['cache', 'net']),`
+     - `bump.bump_version` - Bumps a certain part of a package's semver version number and updates the file containing
+       the version
+     - `commands.BumpCommand` - A setup.py command class, which allows you to use `bump.bump_version` within
+       your package, just by typing a command such as `./setup.py bump --minor` (bumps your package's minor 0.x.0
+       version and updates the file which contains the version)
+     - `commands.ExtrasCommand` - Exposes various functionality for managing `extras_require` in your package,
+       including easily generating/saving requirements.txt files for your extras, installing the requirements, 
+       and outputting a list of extras.
  
  - `decorators` - various decorators to simplify your code
      - `retry_on_err` - automatically re-run a function/method when exceptions are thrown, with a variety of
@@ -357,16 +369,32 @@ As of version 2.0.0 - Privex Helpers now supports **Setuptools Extras**, allowin
 to specify extra dependencies related to privex-helpers in your requirements.txt, or when running
 **pip3 install**.
 
-```
-# full: Install all extra dependencies if they aren't already installed
-#   NOTE: Excludes the `django` extras, because Django + sub-deps weighs ~30-50mb - plus you'd normally only
-#   be using the `django` module in a Django project, where you'd have the deps installed anyway...
-#
-# crypto:   Install dependencies related to the `crypto` module
-# cache:    Install dependencies related to the `cache` module
-# django:   Install dependencies related to the `django` module
-# net:      Install dependencies related to the `net` module
+**What is each extra for?**
 
+Extras designed for using the `privex-helpers` package in a project/package:
+
+ - **full**     - A meta-extra which includes most other extras required for full functionality of the library.
+     - It does **NOT** include the `django` extra, because the `Django` package and it's sub-dependencies results in
+       a good 30-50mb of packages being installed, and those who would use the `django` module probably already 
+       have `Django` installed...
+     - It does **NOT** include the `docs` or `tests` extras, as those two are only required for building the
+       documentation, or running the unit tests.
+ - **crypto**   - Install dependencies required to use the `crypto` module
+ - **cache**    - Install optional dependencies to enable all cache backends in `cache`
+ - **django**   - Install dependencies related to the `django` module (including `Django` itself)
+ - **net**      - Install optional dependencies to enable full functionality of the `net` module
+ - **setuppy**  - Install optional dependencies to enable full functionality of the `setuppy` modules
+
+Extras designed for use when developing, testing, documenting, or building `privex-helpers`:
+
+ - **dev**      - Includes everything required for development and related activities with `privex-helper`.
+                  Generally includes ALL extras, unlike `full` this includes `django`, `docs` and `tests`
+ - **docs**     - This extra is not required for privex-helpers modules. It contains requirements for building the docs.
+ - **tests**    - Not required for privex-helpers module usage. Contains requirements for running the unit tests.
+
+**Using the extras with pip install**
+
+```
 # Example: Install privex-helpers AND all optional dependencies (excluding django), for full functionality
 pip3 install 'privex-helpers[full]'
 
@@ -391,7 +419,44 @@ redis>=3.3.8
 cryptography>=2.8
 ```
 
+### Installing extras when using the cloned repository
+
+First, it's recommended to install the requirements in `extras/setuppy.txt` to ensure setup.py functions fully.
+
+```bash
+pip3 install -r extras/setuppy.txt
+```
+
+As of privex-helpers 2.1.0, you can use the handy setup.py `extras` command to install individual extras requirements,
+or all extra requirements painlessly:
+
+```bash
+# Install ALL extras requirements (including Django and unit testing related)
+./setup.py extras -i
+
+# Install an individual extras requirements, for example 'cache' or 'net'
+./setup.py extras -i -e cache
+```
+
+If you just want to install the `privex-helpers` package from source, then you can use pip to install
+the current folder, and specify the extras you want:
+
+```bash
+# Standard "full" install, excluding Django and development packages for docs/testing
+pip3 install '.[full]'
+# Full development installation, includes everything in 'full', with the addition of the django, docs, and tests extras
+pip3 install '.[dev]'
+``` 
+ 
 ### Modules with dependencies
+
+If you're using `privex-helpers` within a normal project (not a package), then it's recommended to simply
+install `privex-helpers[full]` which includes all main dependencies for full functionality. 
+
+If you're using it inside of a package, then you should only require the extras that are critical to your package
+functioning. Anything non-essential should be placed in the `extras_require` of your setup.py to avoid 
+un-necessary packages being installed on your users.
+
 
 **Modules which require a dependency to use them**
 
@@ -401,10 +466,16 @@ cryptography>=2.8
 
 **Dynamic modules which simply enable additional features if you install certain packages**
 
+ - `setuppy` - The `common` sub-module should generally work without any dependencies, but to be able to use all 
+   functionality of this module such as the `bump` and `commands` sub-modules, you'll need to install with the
+   `setuppy` extra, e.g. `privex-helpers[setuppy]`
  - `net` - Some functions are dependent on `dnspython` (or `privex-helpers[net]`), but the majority of the module 
    is dependency-free
  - `cache` - The cache layer works just fine without any dependencies. If you're using `privex-helper` within a project,
    then you may want to install `redis` (or `privex-helpers[cache]`) to make the Redis cache adapter available.
+ - `plugin` - While this module isn't very often used within other projects/packages, it does expose some
+   Redis singleton management functions (and possibly others at the time of writing). If you plan on using
+   this module, we recommend using `privex-helpers[full]` for the best experience.
 
 
 # Unit Tests

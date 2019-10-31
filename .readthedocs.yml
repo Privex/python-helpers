@@ -13,7 +13,7 @@ formats: all
 # Install package + docs requirements
 python:
   version: 3.7
-  install:
-    - requirements: docs/requirements.txt
-    - method: setuptools
-      path: .
+  pip_install: true
+  extra_requirements:
+    - dev
+

@@ -2,7 +2,7 @@ privex.helpers.asyncx
 =====================
 
 .. automodule:: privex.helpers.asyncx
-
+   :noindex:
    
    
    .. rubric:: Functions
@@ -19,6 +19,5 @@ privex.helpers.asyncx
    
    
 
-   
    
    

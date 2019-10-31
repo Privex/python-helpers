@@ -2,6 +2,18 @@
 
 .. automodule:: {{ fullname }}
 
+
+   {% block attributes %}
+   {% if attributes %}
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree: {{ name | lower }}
+   {% for item in attributes %}
+      ~{{ name }}.{{ item }}
+   {%- endfor %}
+   {% endif %}
+   {% endblock %}
    {% block functions %}
    {% if functions %}
    .. rubric:: Functions

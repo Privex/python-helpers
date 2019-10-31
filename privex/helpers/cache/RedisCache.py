@@ -30,7 +30,8 @@ if plugin.HAS_REDIS:
             >>> rc['hello']
             'world'
         
-        **Disabling Pickling**::
+        
+        **Disabling Pickling**
         
         In some cases, you may need interoperable caching with other languages. The :py:mod:`pickle` serialisation
         technique is extremely specific to Python and is largely unsupported outside of Python. Thus if you need
@@ -40,20 +41,23 @@ if plugin.HAS_REDIS:
         complex objects such as ``dict``, ``list``, ``Decimal``, or arbitrary classes/functions after getting
         or setting cache keys.
         
-        **Disabling Pickle per instance**::
+        **Disabling Pickle per instance**
         
         Pass ``use_pickle=False`` to the constructor, or access the attribute directly to disable pickling for a
-        single instance of RedisCache (not globally)
+        single instance of RedisCache (not globally)::
         
             >>> rc = RedisCache(use_pickle=False)  # Opt 1. Disable pickle in constructor
             >>> rc.use_pickle = False              # Opt 2. Disable pickle on an existing instance
         
-        **Disabling Pickle by default on any new instances**::
+        
+        **Disabling Pickle by default on any new instances**
         
         Change the static attribute :py:attr:`.pickle_default` to ``False`` to disable the use of pickle by default
-        across any new instances of RedisCache.
+        across any new instances of RedisCache::
         
             >>> RedisCache.pickle_default = False
+        
+        
         
         """
         

@@ -50,7 +50,8 @@ X11 / MIT License
 """
 
 import logging
-from privex.loghelper import LogHelper
+import warnings
+
 from privex.helpers.common import *
 from privex.helpers.decorators import *
 from privex.helpers.net import *
@@ -58,21 +59,40 @@ from privex.helpers.exceptions import *
 from privex.helpers.plugin import *
 from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, cached
 
+log = logging.getLogger(__name__)
+
+
 try:
     from privex.helpers.cache.RedisCache import RedisCache
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "RedisCache", not loading RedisCache')
     pass
 try:
-    from privex.helpers.asyncx import *
+    from privex.helpers.asyncx import async_sync, run_sync
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "asyncx", not loading async helpers')
     pass
+
 try:
-    from privex.helpers.crypto import *
+    from privex.helpers.crypto import Format, KeyManager, EncryptHelper, auto_b64decode, is_base64
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "crypto", not loading cryptography helpers')
     pass
+
+try:
+    from privex.helpers.setuppy.common import extras_require, reqs
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
+
+try:
+    from privex.helpers.setuppy.commands import BumpCommand, ExtrasCommand
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
+
+try:
+    from privex.helpers.setuppy.bump import bump_version, get_current_ver
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
 
 
 def _setup_logging(level=logging.WARNING):
@@ -81,14 +101,21 @@ def _setup_logging(level=logging.WARNING):
     console or file logging handlers, we purely just set our minimum logging level to WARNING to avoid
     spamming the logs of any application importing it.
     """
-    lh = LogHelper(__name__, level=level)
-    return lh.get_logger()
-
+    try:
+        from privex.loghelper import LogHelper
+        lh = LogHelper(__name__, level=level)
+        return lh.get_logger()
+    except ImportError:
+        warnings.warn(f'{__name__} failed to import privex.loghelper. Logging may not work as expected.')
+        lh = logging.getLogger(__name__)
+        lh.setLevel(logging.WARNING)
+        return log
+    
 
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.0.0'
+VERSION = '2.1.0'
 
 
 

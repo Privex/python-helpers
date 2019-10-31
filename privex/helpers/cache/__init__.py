@@ -7,7 +7,8 @@ To make the module easy to use, :py:func:`.adapter_get` initialises an instance 
 global cache adapter instance has been setup. This means you can use the various alias functions in this module
 without having to configure a cache adapter.
 
-**Setting / updating the global cache adapter instance**::
+Setting / updating the global cache adapter instance
+----------------------------------------------------
 
 First import the ``cache`` module.
 
@@ -31,7 +32,8 @@ can import ``cached`` to enable dictionary-like cache item access.
     >>> cached['otherkey'] = 'testing'
 
 
-**Plug-n-play usage**::
+Plug-n-play usage
+-----------------
 
 As explained near the start of this module's documentation, you don't have to set the global adapter if you only
 plan on using the simple :class:`.MemoryCache` adapter.

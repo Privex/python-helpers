@@ -4,9 +4,9 @@ KeyManager
 .. currentmodule:: privex.helpers.crypto.KeyManager
 
 .. autoclass:: KeyManager
+   :noindex:
 
-
-.. automethod:: __init__
+    .. automethod:: privex.helpers.crypto.KeyManager.KeyManager.__init__
 
 
 Methods

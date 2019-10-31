@@ -243,7 +243,7 @@ class KeyManager:
         
         :param key: The public/private key data, as either a string, bytes, or one of the various private key class
                     instances or public key class instances
-                    (see :py:attr:`.public_key_types` and :py:attr:`.private_key_types)
+                    (see :py:attr:`.public_key_types` and :py:attr:`.private_key_types`)
          
         :param str|bytes password: If your key data is encrypted, pass the password in this argument to decrypt it.
         """
@@ -453,10 +453,13 @@ class KeyManager:
         Returns an instance of :class:`.KeyManager` using a public/private key loaded from disk, instead of
         from string/bytes key data.
         
+        Example::
+        
             >>> km = KeyManager.load_keyfile('id_rsa')
             >>> d = km.encrypt('hello world')
             >>> km.decrypt(d)
             b'hello world'
+        
         
         :param str|bytes filename: The file location where the key is stored
         :param str|bytes password: If the key is encrypted, specify the password to decrypt it
@@ -472,15 +475,19 @@ class KeyManager:
         """
         Generate a key pair, returning private + public key instances from the cryptography module.
         
+        Example::
+        
             >>> priv, pub = KeyManager.generate_keypair_raw(alg='rsa', key_size=1024)
             >>> priv.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.PKCS8)
-            b'-----BEGIN PRIVATE KEY-----\nMIICdQIBADANBgkqhkiG9w0BAQEFAASCAl8wggJbAgEAAoGBAMjkl
-             ...Pw6eZGFwBEYY\n-----END PRIVATE KEY-----\n'
+            b'-----BEGIN PRIVATE KEY-----\\nMIICdQIBADANBgkqhkiG9w0BAQEFAASCAl8wggJbAgEAAoGBAMjkl
+             ...Pw6eZGFwBEYY\\n-----END PRIVATE KEY-----\\n'
              
             >>> priv, pub = KeyManager.generate_keypair_raw(alg='ecdsa', curve=ec.SECP521R1)
             >>> pub.public_bytes(encoding=Encoding.OpenSSH, format=PublicFormat.OpenSSH)
             b'ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1...dJCxguBQnb1hL6aDH4fHCjpy6A=='
-            
+        
+        
+        
         :param str alg: The algorithm to generate a key for, e.g. ``'rsa'``
         :param kwargs: All kwargs are forwarded to the matching generator in :py:attr:`.generators`
         :return tuple keys: A tuple containing a private key instance, and public key instance
@@ -501,25 +508,29 @@ class KeyManager:
         By default, private keys are generally returned in PKCS8 format with PEM encoding, while
         public keys are OpenSSH format and OpenSSH encoding.
         
+        Example::
+        
             >>> priv, pub = KeyManager.generate_keypair(alg='rsa', key_size=2048)
             >>> priv
-            b'-----BEGIN PRIVATE KEY-----\nMIICdQIBADANBgkqhkiG9w0BAQEFAASCAl8wggJbAgEAAoGBAMjkl
-             ...Pw6eZGFwBEYY\n-----END PRIVATE KEY-----\n'
+            b'-----BEGIN PRIVATE KEY-----\\nMIICdQIBADANBgkqhkiG9w0BAQEFAASCAl8wggJbAgEAAoGBAMjkl
+             ...Pw6eZGFwBEYY\\n-----END PRIVATE KEY-----\\n'
              
             >>> priv, pub = KeyManager.generate_keypair(alg='ecdsa', curve=ec.SECP521R1)
             >>> pub
             b'ecdsa-sha2-nistp521 AAAAE2VjZHNhLXNoYTItbmlzdHA1...dJCxguBQnb1hL6aDH4fHCjpy6A=='
         
-        To override the formatting/encoding:
+        
+        To override the formatting/encoding::
         
             >>> priv, pub = KeyManager.generate_keypair(
             ...     alg='ecdsa', format=dict(private_format='openssl', private_encoding='der')
             ... )
             >>> priv
-            b'0\x81\xa4\x02\x01\x01\x040u\x1e\x8cI\xcd\xfa\xc8\x97\x83\xf8\xed\x1f\xe5\xbd\xc3S|>\xdf\x1a?...'
-            
-        :param alg:
-        :param kwargs:
+            b'0\\x81\\xa4\\x02\\x01\\x01\\x040u\\x1e\\x8cI\\xcd\\xfa\\xc8\\x97\\x83\\xf8\\xed\\x1f\\xe5\\xbd...'
+        
+        
+        :param str alg: The algorithm to generate a key for, e.g. ``'rsa'``
+        :param kwargs: All kwargs are forwarded to the matching generator in :py:attr:`.generators`
         :keyword int key_size: (for `rsa` and similar algorithms) Number of bits for the RSA key. Minimum of 512 bits.
         :keyword dict format: Override some or all of the default format/encoding for the keys.
                       Dict Keys: private_format,public_format,private_encoding,public_encoding
@@ -550,7 +561,7 @@ class KeyManager:
         Generate a 4096-bit RSA key pair, and output the private key to the file ``id_rsa`` ,
         and the public key to ``id_rsa.pub``.
         
-        The generated keypair is also returned as a tuple pair (bytes) containing the private and public key.
+        The generated keypair is also returned as a tuple pair (bytes) containing the private and public key::
         
             >>> priv, pub = KeyManager.output_keypair('id_rsa', 'id_rsa.pub', alg='rsa', key_size=4096)
         

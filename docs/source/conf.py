@@ -16,10 +16,14 @@
 
 import os
 import sys
+from os.path import dirname, abspath
+
 import sphinx_rtd_theme
 
 # Add base directory of the project to the path
-sys.path.insert(0, os.path.abspath('../..'))
+BASE_DIR = dirname(dirname(dirname(abspath(__file__))))
+
+sys.path.insert(0, BASE_DIR)
 
 # -- Project information -----------------------------------------------------
 
@@ -180,5 +184,6 @@ intersphinx_mapping = {
     'python': ('https://docs.python.org/3.6', None),
     'cryptography': ('https://cryptography.io/en/latest/', None),
     'django': ('http://django.readthedocs.org/en/latest/', None),
+    'semver': ('https://python-semver.readthedocs.io/en/latest/', None),
 }
 

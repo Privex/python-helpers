@@ -47,6 +47,11 @@ from typing import Union
 
 log = logging.getLogger(__name__)
 
+__all__ = [
+    'ip_to_rdns', '_check_boundaries', 'ip4_to_rdns', 'ip6_to_rdns', 'ip_is_v4', 'ip_is_v6',
+    'ping', 'BoundaryException', 'NetworkUnreachable'
+]
+
 try:
     from dns.resolver import Resolver, NoAnswer, NXDOMAIN
     
@@ -88,6 +93,7 @@ try:
                 return 'Unknown ASN'
             raise KeyError('ASN {} was not found, or server did not respond.'.format(as_number))
     
+    __all__ += ['asn_to_name']
     plugin.HAS_DNSPYTHON = True
     
 except ImportError:

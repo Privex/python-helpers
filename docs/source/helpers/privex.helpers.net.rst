@@ -2,7 +2,7 @@ privex.helpers.net
 ==================
 
 .. automodule:: privex.helpers.net
-
+   :noindex:
    
    
    .. rubric:: Functions

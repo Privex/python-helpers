@@ -119,6 +119,7 @@ from tests.test_crypto import *
 from tests.test_bool import TestBoolHelpers
 from tests.test_rdns import TestIPReverseDNS
 from tests.test_parse import TestParseHelpers
+from tests.test_net import TestNet
 
 if env_bool('DEBUG', False) is True:
     LogHelper('privex.helpers', level=logging.DEBUG).add_console_handler(logging.DEBUG)

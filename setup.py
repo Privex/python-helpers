@@ -33,18 +33,30 @@ HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTIO
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
+import warnings
 
 from setuptools import setup, find_packages
 from os.path import join, dirname, abspath
-from privex.helpers import VERSION
-from privex.helpers.setuppy import extras_require, reqs
+from privex.helpers import VERSION, extras_require
 
 BASE_DIR = dirname(abspath(__file__))
 
 with open(join(BASE_DIR, "README.md"), "r") as fh:
     long_description = fh.read()
 
-extensions = ['full', 'cache', 'crypto', 'django', 'net', 'tests']
+extensions = ['full', 'cache', 'crypto', 'django', 'docs', 'dev', 'net', 'tests', 'setuppy']
+
+extra_commands = {}
+
+try:
+    # noinspection PyUnresolvedReferences
+    import privex.helpers.setuppy.commands
+    extra_commands['extras'] = privex.helpers.setuppy.commands.ExtrasCommand
+    extra_commands['bump'] = privex.helpers.setuppy.commands.BumpCommand
+except (ImportError, AttributeError) as e:
+    warnings.warn('Failed to import privex.helpers.setuppy.commands - the commands "extras" and "bump" may not work.')
+    warnings.warn(f'Error Reason: {type(e)} - {str(e)}')
+
 
 setup(
     name='privex_helpers',
@@ -62,6 +74,7 @@ setup(
     install_requires=[
         'privex-loghelper>=1.0.4'
     ],
+    cmdclass=extra_commands,
     extras_require=extras_require(extensions),
     packages=find_packages(exclude=['tests', 'test.*']),
     classifiers=[

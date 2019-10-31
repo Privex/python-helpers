@@ -1,0 +1,34 @@
+# core requirement
+privex-loghelper
+
+# Extra [cache] - file: extras/cache.txt
+redis>=3.3
+
+# Extra [crypto] - file: extras/crypto.txt
+cryptography>=2.8
+
+# Extra [django] - file: extras/django.txt
+Django
+
+# Extra [net] - file: extras/net.txt
+dnspython>=1.16
+
+# Extra [tests] - file: extras/tests.txt
+pytest
+pytest-cov
+coverage
+codecov
+
+# Extra [setuppy] - file: extras/setuppy.txt
+setuptools
+wheel
+twine
+semver
+
+# Extra [docs] - file: extras/docs.txt
+Sphinx>=2.1.2
+sphinx-autobuild>=0.7.1
+restructuredtext-lint>=1.3.0
+sphinx-rtd-theme>=0.4.3
+MarkupSafe>=1.1.1
+docutils>=0.14

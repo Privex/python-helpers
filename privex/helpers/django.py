@@ -58,6 +58,9 @@ from django.http.response import HttpResponseRedirectBase
 from django.db.migrations.executor import MigrationExecutor
 from django.db import connections
 
+__all__ = ['handle_error', 'is_database_synchronized', 'model_to_dict', 'to_json']
+
+
 def handle_error(request: HttpRequest, err: str, rdr: HttpResponseRedirectBase, status=400):
     """
     Output an error as either a Django session message + redirect, or a JSON response
@@ -80,6 +83,7 @@ def handle_error(request: HttpRequest, err: str, rdr: HttpResponseRedirectBase, 
         add_message(request, messages.ERROR, err)
         return rdr
 
+
 def is_database_synchronized(database: str) -> bool:
     """
     Check if all migrations have been ran. Useful for preventing auto-running code accessing models before the
@@ -100,6 +104,7 @@ def is_database_synchronized(database: str) -> bool:
     targets = executor.loader.graph.leaf_nodes()
     return False if executor.migration_plan(targets) else True
 
+
 def model_to_dict(model) -> dict:
     """1 dimensional json-ifyer for any Model"""
     from django.forms import model_to_dict as mtd
@@ -109,6 +114,7 @@ def model_to_dict(model) -> dict:
         return getattr(model, method_name)() if method_name in dir(model) else default
 
     return {k: get_display(model, k, v) for k, v in mtd(model).items()}
+
 
 def to_json(query_set) -> str:
     """Iterate a Django query set and dump to json str"""

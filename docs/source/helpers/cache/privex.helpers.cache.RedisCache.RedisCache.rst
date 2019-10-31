@@ -4,10 +4,11 @@ RedisCache
 .. currentmodule:: privex.helpers.cache.RedisCache
 
 .. autoclass:: RedisCache
+   :noindex:
 
    
    .. automethod:: __init__
-
+      :noindex:
    
    .. rubric:: Methods
 
@@ -31,5 +32,4 @@ RedisCache
       :toctree: rediscache
    
       ~RedisCache.pickle_default
-   
    

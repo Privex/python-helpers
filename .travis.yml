@@ -3,8 +3,6 @@ services:
   - redis-server
 language: python
 cache: pip
-env:
-  - CODECOV_TOKEN="e309d317-ca30-4c79-a01c-f4dc7c60e471"
 python:
   - "3.6"
   - "3.7"
@@ -16,8 +14,7 @@ before_install:
   - sudo apt-get update -qy
   - sudo apt-get install -qy iputils-ping
 install:
-  - pip install -U -r docs/requirements.txt
-  - pip install -U .
+  - pip install -U '.[dev]'
 script: pytest --cov=./privex -v
 after_success:
   - codecov

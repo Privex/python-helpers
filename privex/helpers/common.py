@@ -46,7 +46,7 @@ import logging
 import sys
 from decimal import Decimal, getcontext
 from os import getenv as env
-from typing import Sequence, List, Union, Tuple
+from typing import Sequence, List, Union, Tuple, Type
 
 log = logging.getLogger(__name__)
 
@@ -436,6 +436,86 @@ class ErrHelpParser(argparse.ArgumentParser):
         sys.stderr.write('error: %s\n' % message)
         self.print_help()
         sys.exit(2)
+
+
+def human_name(class_name: Union[str, bytes, callable, Type[object]]) -> str:
+    """
+    This function converts a class/function name into a Title Case name. It also directly accepts classes/functions.
+    
+    Input names can be either snake case ``my_function``, or InitialCaps ``MyClass`` - though mixtures of the two
+    may work, such as ``some_functionName`` - however ``some_FunctionName`` will not (causes double spaces).
+    
+    **Examples**
+    
+    Using a plain string or bytes::
+    
+        >>> human_name(b'_some_functionName')
+        'Some Function Name'
+        >>> human_name('SomeClassName')
+        'Some Class Name'
+    
+    Using a reference to a function::
+    
+        >>> def some_func():
+        ...     pass
+        >>> human_name(some_func)
+        'Some Func'
+    
+    Using a reference to a class, or an instance of a class::
+    
+        >>> class MyExampleClass:
+        ...     pass
+        >>> my_instance = MyExampleClass()
+        >>> human_name(MyExampleClass)
+        'My Example Class'
+        >>> human_name(my_instance)
+        'My Example Class'
+    
+    :param class_name: The name of a class/function specified either in InitialCaps or snake_case.
+                       You may also pass a function reference, class reference, or class instance. (see examples)
+    :return str human_name: The humanised Title Case name of ``class_name``
+    """
+    # First we figure out what type ``class_name`` actually **is**.
+    # Bytes simply get decoded back into a string, while strings are untouched
+    if type(class_name) in [str, bytes]:
+        class_name = stringify(class_name)
+    # References to classes (not instances) and functions means we need .__name__
+    elif type(class_name) is type or str(type(class_name)) == "<class 'function'>":
+        class_name = class_name.__name__
+    # If it's not a class/function reference, but is an instance of object, then it's a class instance.
+    elif isinstance(class_name, object):
+        class_name = class_name.__class__.__name__
+
+    # Then we convert it into a normal string.
+    class_name = str(class_name)
+    
+    # Strip any underlines at the start or end of the class name.
+    name = class_name.strip('_').strip('-')
+    # We can't alter an object as we iterate it, so we copy `name` into a new list which we'll modify instead
+    new_name = list(name)
+    
+    # Capitalise the first letter of the name, if it isn't already.
+    if name[0].islower():
+        new_name[0] = name[0].upper()
+
+    # When we inject spaces where there weren't any before, we need to track how this changes the length,
+    # so that we can correctly reference positions in `new_name`
+    offset = 0
+    # Iterate over each character in the original name (ignoring the first letter because it's probably capital)
+    for i, c in enumerate(name[1:]):
+        pos = (i + 1) + offset
+        # If the current character is uppercase, then inject a space before this character and increment `offset`
+        if c.isupper():
+            new_name = inject_items([' '], new_name, pos - 1)
+            offset += 1
+            continue
+        # If the character is an underline or dash, replace it with a space, and uppercase the character in-front of it.
+        if c in ['_', '-']:
+            new_name[pos] = ' '
+            if str(name[i + 2]).isalpha():
+                new_name[pos + 1] = new_name[pos + 1].upper()
+    
+    return ''.join(new_name).strip()
 
 
 class Dictable:

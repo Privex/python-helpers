@@ -16,10 +16,10 @@ Unit Test List / Overview
     tests.test_general
     tests.test_parse
     tests.test_rdns
+    tests.test_net
 
 
 
 
-   
    
    

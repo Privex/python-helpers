@@ -72,7 +72,7 @@ Instead of having to import the functions from each individual module:
 Below is a listing of the sub-modules available in ``privex-helpers`` with a short description of what each module
 contains.
 
-.. include:: ./helpers/index.rst
+.. include:: helpers/index.rst
 
 
 All Documentation

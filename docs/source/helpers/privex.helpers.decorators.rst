@@ -2,7 +2,7 @@ privex.helpers.decorators
 =========================
 
 .. automodule:: privex.helpers.decorators
-
+   :noindex:
    
    
    .. rubric:: Functions
@@ -28,6 +28,5 @@ privex.helpers.decorators
    
    
 
-   
    
    

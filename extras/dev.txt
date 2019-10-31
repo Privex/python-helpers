@@ -1,0 +1,4 @@
+-r extras/full.txt
+-r extras/django.txt
+-r extras/docs.txt
+-r extras/tests.txt

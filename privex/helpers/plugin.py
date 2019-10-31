@@ -49,6 +49,9 @@ import logging
 from privex.helpers import settings
 
 log = logging.getLogger(__name__)
+
+__all__ = ['HAS_REDIS', 'HAS_DNSPYTHON']
+
 HAS_REDIS = False
 """If the ``redis`` module was imported successfully, this will change to True."""
 
@@ -84,6 +87,8 @@ try:
             del __STORE['redis']
         return get_redis()
 
+
+    __all__ += ['get_redis', 'reset_redis', 'configure_redis']
     HAS_REDIS = True
 
 except ImportError:

@@ -1,27 +1,27 @@
-privex.helpers.setuppy
-======================
+Packaging / Distribution helpers (setuppy)
+==========================================
+
 
 .. automodule:: privex.helpers.setuppy
 
-   
-   
-   .. rubric:: Functions
 
-   .. autosummary::
-      :toctree: setuppy
 
-      extras
-      extras_require
-      pip_requirement
-      reqs
-      strip_comments
-   
-   
+.. autosummary::
+    :toctree: setuppy
 
+
+    privex.helpers.setuppy.bump
+    privex.helpers.setuppy.common
+    privex.helpers.setuppy.commands
+
+   
    
    
    
 
    
+   
+   
+
    
    

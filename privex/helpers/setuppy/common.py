@@ -1,20 +1,26 @@
 """
-Helpers for setup.py, e.g. requirements.txt parsing
+Requirements / distutils "extras" helpers
 
-**Example usage**
-    
+
+Example usage for requirements/extras helpers
+---------------------------------------------
+
+Examples::
+
     >>> extensions = ['cache', 'crypto', 'django']
     # Loads ``extras/{extension}.txt`` for each extension, then returns a dictionary mapping each extension
     # to their requirements
     >>> extras_require(extensions)
     {'cache': ['redis'], 'crypto': ['cryptography>=2.8'], 'django': ['Django']}
-    
+
     # Load ``example.txt`` and merge sub-requirement lists.
     >>> reqs('example.txt')
     ['privex-loghelper>=1.0', 'privex-jsonrpc', 'requests']
 
 
-**License note**
+
+License note
+------------
 
 The following functions were taken from Celery's ``setup.py`` file. Since the time of writing
 this comment block, they may have been further modified from their originals.
@@ -33,11 +39,12 @@ The BSD license text can also be found here: http://www.opensource.org/licenses/
 Celery LICENSE file: https://github.com/celery/celery/blob/master/LICENSE
 
 """
+import logging
 import os
+from privex.helpers.settings import EXTRAS_FOLDER
 from typing import Union, Dict
 
-EXTRAS_FOLDER = 'extras'
-"""Folder where additional requirements files can be found for :py:func:`.extras`"""
+log = logging.getLogger(__name__)
 
 
 def strip_comments(l: str) -> str:
@@ -64,7 +71,9 @@ def _reqs(*f: str) -> list:
 
 
 def reqs(*f: str) -> list:
-    """Parse requirement file.
+    """
+    Parse requirement file.
+    
     Example:
         reqs('default.txt')          # $PWD/default.txt
         reqs('extras', 'redis.txt')  # $PWD/extras/redis.txt
@@ -75,11 +84,10 @@ def reqs(*f: str) -> list:
 
 
 def extras(*p) -> list:
-    """Parse requirement in the requirements/extras/ directory."""
+    """Parse requirement in the extras/ directory."""
     return reqs(EXTRAS_FOLDER, *p)
 
 
 def extras_require(extra: Union[list, set, tuple]) -> Dict[str, list]:
     """Get map of all extra requirements."""
     return {x: extras(x + '.txt') for x in extra}
-
