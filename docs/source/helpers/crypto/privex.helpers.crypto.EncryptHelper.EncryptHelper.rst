@@ -4,9 +4,8 @@ EncryptHelper
 .. currentmodule:: privex.helpers.crypto.EncryptHelper
 
 .. autoclass:: EncryptHelper
-   :noindex:
 
-    .. automethod:: privex.helpers.crypto.EncryptHelper.EncryptHelper.__init__
+    .. automethod:: __init__
        :noindex:
 
 

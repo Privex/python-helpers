@@ -2,8 +2,7 @@ privex.helpers.crypto.base
 ==========================
 
 .. automodule:: privex.helpers.crypto.base
-   :noindex:
-   
+
    
    .. rubric:: Functions
 

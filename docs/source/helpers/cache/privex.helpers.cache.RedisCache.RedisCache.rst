@@ -4,7 +4,6 @@ RedisCache
 .. currentmodule:: privex.helpers.cache.RedisCache
 
 .. autoclass:: RedisCache
-   :noindex:
 
    
    .. automethod:: __init__

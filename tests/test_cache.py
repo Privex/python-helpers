@@ -44,11 +44,26 @@ from privex import helpers
 from privex.helpers import r_cache, random_str, plugin, CacheAdapter
 from tests.base import PrivexBaseCase
 
+try:
+    import pytest
+    
+    HAS_PYTEST = True
+except ImportError:
+    warnings.warn('WARNING: Could not import pytest. You should run "pip3 install pytest" to ensure tests work best')
+    pytest = helpers.Mocker.make_mock_class('module')
+    pytest.skip = lambda msg, allow_module_level=True: warnings.warn(msg)
+    pytest.add_mock_module('mark')
+    pytest.mark.skip, pytest.mark.skipif = helpers.mock_decorator, helpers.mock_decorator
+    HAS_PYTEST = False
+
+HAS_REDIS = plugin.HAS_REDIS
+
 
 class TestCacheDecoratorMemory(PrivexBaseCase):
     """
     Test that the decorator :py:func:`privex.helpers.decorators.r_cache` caches correctly, with adapter
-    :class:`helpers.MemoryCache` and also verifies dynamic cache key generation works as expected.
+    :class:`privex.helpers.cache.MemoryCache.MemoryCache` and also verifies dynamic cache key generation
+    works as expected.
     """
 
     cache = helpers.cache.cached
@@ -113,10 +128,11 @@ class TestCacheDecoratorMemory(PrivexBaseCase):
         super(TestCacheDecoratorMemory, self).tearDown()
 
 
+@pytest.mark.skipif(not HAS_REDIS, reason="TestCacheDecoratorRedis requires package 'redis'")
 class TestCacheDecoratorRedis(TestCacheDecoratorMemory):
     """
     Test decorator :py:func:`privex.helpers.decorators.r_cache` with adapter
-    :class:`helpers.RedisCache`
+    :class:`privex.helpers.cache.RedisCache.RedisCache`
     
     (See :class:`.TestCacheDecoratorMemory`)
     """
@@ -184,7 +200,7 @@ class TestMemoryCache(PrivexBaseCase):
         self.assertEqual(c.get(key), 'UpdateExpiryTest')
     
     def test_cache_update_timeout_raise(self):
-        """Test that cache.update_timeout raises :class:`.helpers.CacheNotFound` if the key does not exist"""
+        """Test that cache.update_timeout raises :class:`.CacheNotFound` if the key does not exist"""
         key, c = self.cache_keys[3], self.cache
         with self.assertRaises(helpers.CacheNotFound):
             c.update_timeout(key, timeout=10)
@@ -198,6 +214,7 @@ class TestMemoryCache(PrivexBaseCase):
         self.assertIs(c.get(key), None)
 
 
+@pytest.mark.skipif(not HAS_REDIS, reason="TestRedisCache requires package 'redis'")
 class TestRedisCache(TestMemoryCache):
     """
     :class:`.RedisCache` Test cases for caching related functions/classes in :py:mod:`privex.helpers.cache`

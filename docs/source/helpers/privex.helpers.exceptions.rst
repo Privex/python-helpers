@@ -2,7 +2,6 @@ privex.helpers.exceptions
 =========================
 
 .. automodule:: privex.helpers.exceptions
-   :noindex:
 
    .. rubric:: Exceptions
 

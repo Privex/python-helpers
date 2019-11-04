@@ -2,7 +2,7 @@ tests.test\_net
 ===============
 
 .. automodule:: tests.test_net
-   :noindex:
+
 
    
    
@@ -22,5 +22,6 @@ tests.test\_net
    
    
 
+   
    
    

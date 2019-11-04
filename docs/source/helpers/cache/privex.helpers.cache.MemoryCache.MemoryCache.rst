@@ -4,8 +4,7 @@ MemoryCache
 .. currentmodule:: privex.helpers.cache.MemoryCache
 
 .. autoclass:: MemoryCache
-   :noindex:
-   
+
    .. automethod:: __init__
       :noindex:
 

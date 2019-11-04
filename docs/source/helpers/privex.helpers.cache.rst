@@ -18,7 +18,6 @@ Functions
 ^^^^^^^^^
 
 .. automodule:: privex.helpers.cache
-   :noindex:
 
    .. rubric:: Attributes
 

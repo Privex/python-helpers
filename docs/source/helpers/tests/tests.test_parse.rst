@@ -3,6 +3,10 @@ tests.test\_parse
 
 .. automodule:: tests.test_parse
 
+
+   
+   
+   
    
    
    
@@ -12,6 +16,7 @@ tests.test\_parse
    .. rubric:: Classes
 
    .. autosummary::
+      :toctree: test_parse
    
       TestParseHelpers
    

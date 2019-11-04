@@ -3,6 +3,10 @@ tests.test\_bool
 
 .. automodule:: tests.test_bool
 
+
+   
+   
+   
    
    
    
@@ -12,6 +16,7 @@ tests.test\_bool
    .. rubric:: Classes
 
    .. autosummary::
+      :toctree: test_bool
    
       TestBoolHelpers
    

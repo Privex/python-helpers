@@ -357,3 +357,18 @@ def r_cache(cache_key: Union[str, callable], cache_time=300, format_args: list =
     return _decorator
 
 
+def mock_decorator(*dec_args, **dec_kwargs):
+    """
+    This decorator is a pass-through decorator which does nothing other than be a decorator.
+    
+    It's designed to be used with the :class:`privex.helpers.common.Mocker` class when mocking classes/modules,
+    allowing you to add fake decorators to the mock class/method which do nothing, other than act like a decorator
+    without breaking your functions/methods.
+    """
+    def _decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            return f(*args, **kwargs)
+        return wrapper
+    return _decorator
+

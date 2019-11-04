@@ -2,8 +2,7 @@ privex.helpers.plugin
 =====================
 
 .. automodule:: privex.helpers.plugin
-   :noindex:
-   
+
    
    .. rubric:: Functions
 

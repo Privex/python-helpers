@@ -2,7 +2,6 @@ privex.helpers.settings
 =======================
 
 .. automodule:: privex.helpers.settings
-   :noindex:
 
 .. rubric:: Attributes
 

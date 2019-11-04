@@ -50,13 +50,27 @@ from privex.helpers import settings
 
 log = logging.getLogger(__name__)
 
-__all__ = ['HAS_REDIS', 'HAS_DNSPYTHON']
+__all__ = [
+    'HAS_REDIS', 'HAS_DNSPYTHON', 'HAS_CRYPTO', 'HAS_SETUPPY_BUMP', 'HAS_SETUPPY_COMMANDS', 'HAS_SETUPPY_COMMON'
+]
 
 HAS_REDIS = False
 """If the ``redis`` module was imported successfully, this will change to True."""
 
 HAS_DNSPYTHON = False
 """If the ``dns.resolver`` module was imported successfully, this will change to True."""
+
+HAS_CRYPTO = False
+"""If :py:mod:`privex.helpers.crypto` was imported successfully, this will change to True"""
+
+HAS_SETUPPY_COMMON = False
+"""If :py:mod:`privex.helpers.setuppy.common` was imported successfully, this will change to True"""
+
+HAS_SETUPPY_BUMP = False
+"""If :py:mod:`privex.helpers.setuppy.bump` was imported successfully, this will change to True"""
+
+HAS_SETUPPY_COMMANDS = False
+"""If :py:mod:`privex.helpers.setuppy.commands` was imported successfully, this will change to True"""
 
 __STORE = {}
 """This ``dict`` is used to store initialised classes for connections to databases, APIs etc."""

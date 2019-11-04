@@ -1,14 +1,19 @@
 """
-
-
 This module contains test cases for Privex's Python Helper's (privex-helpers).
+
 
 Testing pre-requisites
 ----------------------
 
     - Ensure you have any mandatory requirements installed (see setup.py's install_requires)
+    - You should install ``pytest`` to run the tests, it works much better than standard python unittest.
     - You may wish to install any optional requirements listed in README.md for best results
     - Python 3.7 is recommended at the time of writing this. See README.md in-case this has changed.
+
+For the best testing experience, it's recommended to install the ``dev`` extra, which includes every optional
+dependency, as well as development requirements such as ``pytest`` , ``coverage`` as well as requirements for
+building the documentation.
+
 
 Running via PyTest
 ------------------
@@ -17,26 +22,80 @@ To run the tests, we strongly recommend using the ``pytest`` tool (used by defau
 
     # Install PyTest if you don't already have it.
     user@host: ~/privex-helpers $ pip3 install pytest
+    
+    # We recommend adding the option ``-rxXs`` which will show information about why certain tests were skipped
+    # as well as info on xpass / xfail tests
     # You can add `-v` for more detailed output, just like when running the tests directly.
-    user@host: ~/privex-helpers $ pytest
+    user@host: ~/privex-helpers $ pytest -rxXs
+    
+    # NOTE: If you're using a virtualenv, sometimes you may encounter strange conflicts between a global install
+    # of PyTest, and the virtualenv PyTest, resulting in errors related to packages not being installed.
+    # A simple workaround is just to call pytest as a module from the python3 executable:
+    
+    user@host: ~/privex-helpers $ python3 -m pytest -rxXs
 
-    ===================================== test session starts =====================================
-    platform darwin -- Python 3.7.0, pytest-5.0.1, py-1.8.0, pluggy-0.12.0
+    ============================== test session starts ==============================
+    platform darwin -- Python 3.7.0, pytest-5.2.2, py-1.8.0, pluggy-0.13.0
     rootdir: /home/user/privex-helpers
-    collected 56 items
+    collected 99 items
+    
+    tests/test_bool.py .........                                              [  9%]
+    tests/test_cache.py ................                                      [ 25%]
+    tests/test_crypto.py .........................                            [ 50%]
+    tests/test_general.py ...................                                 [ 69%]
+    tests/test_net.py ssss.s                                                  [ 75%]
+    tests/test_parse.py ..........                                            [ 85%]
+    tests/test_rdns.py ..............                                         [100%]
+    
+    ============================ short test summary info ============================
+    SKIPPED [1] tests/test_net.py:76: Requires package 'dnspython'
+    SKIPPED [1] tests/test_net.py:83: Requires package 'dnspython'
+    SKIPPED [1] tests/test_net.py:66: Requires package 'dnspython'
+    SKIPPED [1] tests/test_net.py:71: Requires package 'dnspython'
+    SKIPPED [1] /home/user/privex-helpers/tests/test_net.py:56: Skipping test TestGeneral.test_ping_v6 as platform is
+    not supported: "privex.helpers.net.ping is not fully supported on platform 'Darwin'..."
+    ================== 94 passed, 5 skipped, 1 warnings in 21.66s ===================
 
-    tests/test_bool.py .........                                                      [ 16%]
-    tests/test_cache.py ................                                              [ 44%]
-    tests/test_general.py .......                                                     [ 57%]
-    tests/test_parse.py ..........                                                    [ 75%]
-    tests/test_rdns.py ..............                                                 [100%]
 
-    ============================ 56 passed, 1 warnings in 0.17 seconds ============================
+Running individual test modules
+-------------------------------
+
+Some test modules such as ``test_cache`` can be quite slow, as sometimes it's required to call sleep, e.g. ``sleep(2)``
+either to prevent interference from previous/following tests, or when testing that an expiration/timeout works.
+
+Thankfully, PyTest allows you to run individual test modules like this::
+    
+    user@host: ~/privex-helpers $ pytest -rxXs -v tests/test_parse.py
+    
+    ============================== test session starts ==============================
+    platform darwin -- Python 3.7.0, pytest-5.2.2, py-1.8.0, pluggy-0.13.0
+    cachedir: .pytest_cache
+    rootdir: /home/user/privex-helpers
+    plugins: cov-2.8.1
+    collected 10 items
+    
+    tests/test_parse.py::TestParseHelpers::test_csv_single PASSED             [ 10%]
+    tests/test_parse.py::TestParseHelpers::test_csv_spaced PASSED             [ 20%]
+    tests/test_parse.py::TestParseHelpers::test_env_bool_false PASSED         [ 30%]
+    tests/test_parse.py::TestParseHelpers::test_env_bool_true PASSED          [ 40%]
+    tests/test_parse.py::TestParseHelpers::test_env_nonexist_bool PASSED      [ 50%]
+    tests/test_parse.py::TestParseHelpers::test_kval_clean PASSED             [ 60%]
+    tests/test_parse.py::TestParseHelpers::test_kval_custom_clean PASSED      [ 70%]
+    tests/test_parse.py::TestParseHelpers::test_kval_custom_spaced PASSED     [ 80%]
+    tests/test_parse.py::TestParseHelpers::test_kval_single PASSED            [ 90%]
+    tests/test_parse.py::TestParseHelpers::test_kval_spaced PASSED            [100%]
+    
+    ============================== 10 passed in 0.09s ===============================
+
 
 Running directly using Python Unittest
 --------------------------------------
 
-Alternatively, you can run the tests by hand with ``python3.7`` ( or just ``python3`` ) ::
+Alternatively, you can run the tests by hand with ``python3.7`` ( or just ``python3`` ), however we strongly
+recommend using PyTest as our tests use various PyTest functionality to allow for things such as skipping tests
+when you don't have a certain dependency installed.
+
+Running via python unittest ::
 
     user@the-matrix ~/privex-helpers $ python3.7 -m tests
     ............................

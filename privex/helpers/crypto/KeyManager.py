@@ -1,4 +1,5 @@
 import base64
+import binascii
 import logging
 from io import BufferedWriter, TextIOWrapper
 from typing import Union, Tuple, Optional
@@ -15,9 +16,9 @@ from cryptography.hazmat.primitives.serialization import PublicFormat, PrivateFo
     load_pem_public_key, load_pem_private_key, load_der_private_key, load_der_public_key
 from cryptography.hazmat.primitives.serialization.pkcs12 import load_key_and_certificates
 
-from privex.helpers.common import byteify, stringify
+from privex.helpers.common import byteify, stringify, empty
 from privex.helpers.crypto.base import is_base64, auto_b64decode
-from privex.helpers.exceptions import InvalidFormat
+from privex.helpers.exceptions import InvalidFormat, EncryptionError
 
 log = logging.getLogger(__name__)
 
@@ -230,6 +231,15 @@ class KeyManager:
     if we don't have a private key available.
     """
     
+    type_name_map = {
+        RSAPublicKey: 'rsa', RSAPrivateKey: 'rsa',
+        RSAPublicKeyWithSerialization: 'rsa', RSAPrivateKeyWithSerialization: 'rsa',
+        Ed25519PrivateKey: 'ed25519', Ed25519PublicKey: 'ed25519',
+        ec.EllipticCurvePublicKey: 'ecdsa', ec.EllipticCurvePrivateKey: 'ecdsa',
+        ec.EllipticCurvePrivateKeyWithSerialization: 'ecdsa', ec.EllipticCurvePublicKeyWithSerialization: 'ecdsa',
+    }
+    """Maps public/private key types to their associated algorithm name for type/instance identification"""
+    
     def __init__(self, key: Union[Text, private_key_types, public_key_types], password: Text = None):
         """
         Create an instance of :class:`.KeyManager` using the public/private key data ``key``
@@ -376,6 +386,85 @@ class KeyManager:
             pad = padding.OAEP(mgf=padding.MGF1(hashing), algorithm=hashing, label=None)
         return self.private_key.decrypt(ciphertext=message, padding=pad)
     
+    @classmethod
+    def identify_algorithm(cls, key: combined_key_types) -> str:
+        """
+        Identifies a cryptography public/private key instance, such as :class:`.RSAPrivateKey`
+        and returns the algorithm name that can be used with other KeyManager methods,
+        e.g. ``'rsa'`` or ``'ed25519'``
+        
+        
+        Example::
+            
+            >>> priv, pub = KeyManager.generate_keypair_raw(alg='ecdsa', curve=ec.SECP521R1)
+            >>> KeyManager.identify_algorithm(priv)
+            'ecdsa'
+            >>> priv, pub = KeyManager.generate_keypair_raw()
+            >>> KeyManager.identify_algorithm(priv)
+            'rsa'
+            >>> KeyManager.identify_algorithm(pub)
+            'rsa'
+
+
+        :param combined_key_types key: A cryptography public/private key instance
+        :return str algorithm: The name of the algorithm used by this key
+        """
+        for ktype, kname in cls.type_name_map.items():
+            if isinstance(key, ktype):
+                return kname
+        raise InvalidFormat('Could not identify key type...')
+
+    def export_public(self, **kwargs) -> bytes:
+        """
+        Serialize the cryptography public key instance loaded into :class:`.KeyManager` into storable bytes.
+        
+        This method works whether you've instantiated KeyManager with the public key directly, or the private key,
+        as the public key is automatically interpolated from the private key by :py:meth:`.__init__`
+
+        Example::
+        
+            >>> km = KeyManager.load_keyfile('id_ed25519.pub')
+            >>> km.export_public()
+            b'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA6vtKgeNSBERSY1xmr47Ve3uyRALxPR+qOeFeUHrUaf'
+            
+        :keyword dict format: Override some or all of the default format/encoding for the keys.
+                              Dict Keys: private_format,public_format,private_encoding,public_encoding
+        :keyword Format format: If passed a :class:`.Format` instance, then this instance will be used for serialization
+                                instead of merging defaults from :py:attr:`.default_formats`
+        :return bytes key: The serialized key.
+        """
+        if empty(self.public_key):
+            raise EncryptionError('Cannot export public key as self.public_key is missing!')
+        # alg = self.identify_algorithm(self.public_key)
+        return self.export_key(self.public_key, **kwargs)
+
+    def export_private(self, **kwargs) -> bytes:
+        """
+        Serialize the cryptography private key instance loaded into :class:`.KeyManager` into storable bytes.
+        
+        This method requires that you've instantiated KeyManager with the private key. It will raise a
+        :class:`.EncryptionError` exception if the :py:attr:`.private_key` instance attribute is empty.
+        
+        Example::
+
+            >>> km = KeyManager.load_keyfile('id_ed25519')
+            >>> print(km.export_private().decode())
+            -----BEGIN PRIVATE KEY-----
+            MC4CAQAwBQYDK2VwBCIEIOeLS2XOcQz11VUnzh6KIZaNtT10YfzHv779zjm95XSy
+            -----END PRIVATE KEY-----
+
+
+        :keyword dict format: Override some or all of the default format/encoding for the keys.
+                              Dict Keys: private_format,public_format,private_encoding,public_encoding
+        :keyword Format format: If passed a :class:`.Format` instance, then this instance will be used for serialization
+                                instead of merging defaults from :py:attr:`.default_formats`
+        :return bytes key: The serialized key.
+        """
+        if empty(self.private_key):
+            raise EncryptionError('Cannot export private key as self.private_key is missing!')
+        # alg = self.identify_algorithm(self.private_key)
+        return self.export_key(self.private_key, **kwargs)
+    
     @staticmethod
     def _load_der_key(data: bytes, password: Optional[bytes] = None):
         """Attempt to de-serialise a DER formatted private/public key. Raises :class:`.InvalidFormat` if it fails."""
@@ -420,13 +509,19 @@ class KeyManager:
         """
         data = stringify(data)
         password = None if not password else byteify(password)
-        
-        if data[0:4] == 'ssh-' or data[0:6] == 'ecdsa-':
-            return load_ssh_public_key(byteify(data), backend=default_backend()), 'public'
-        if '-----BEGIN PUBLIC' in data:
-            return load_pem_public_key(byteify(data), backend=default_backend()), 'public'
-        if '-----BEGIN PRIVATE' in data:
-            return load_pem_private_key(byteify(data), password=password, backend=default_backend()), 'private'
+        try:
+            if data[0:4] == 'ssh-' or data[0:6] == 'ecdsa-':
+                return load_ssh_public_key(byteify(data), backend=default_backend()), 'public'
+            if '-----BEGIN PUBLIC' in data:
+                return load_pem_public_key(byteify(data), backend=default_backend()), 'public'
+            if '-----BEGIN PRIVATE' in data:
+                return load_pem_private_key(byteify(data), password=password, backend=default_backend()), 'private'
+        except binascii.Error as e:
+            raise InvalidFormat(f'Error while decoding key - possibly corrupted base64 encoding. '
+                                f'Original exception: {type(e)} {str(e)}')
+        except ValueError as e:
+            raise InvalidFormat(f'Error while decoding key - key may be corrupted. '
+                                f'Original exception: {type(e)} {str(e)}')
         ##
         # If we couldn't identify the key as PEM or OpenSSH, then fallback to attempting to load it as DER / PKCS12
         ##
@@ -463,6 +558,8 @@ class KeyManager:
         
         :param str|bytes filename: The file location where the key is stored
         :param str|bytes password: If the key is encrypted, specify the password to decrypt it
+        :raises InvalidFormat: When the key could not be identified, is not supported, or is corrupted
+        :raises FileNotFoundError: The given ``filename`` couldn't be found.
         :return KeyManager cls: An instance of :class:`.KeyManager` (or child class) initialised with the key
         """
         filename = stringify(filename)
@@ -537,17 +634,57 @@ class KeyManager:
         :return:
         """
         # noinspection PyTypeChecker
-        fmt_args = cls.default_formats[alg]
-        _fmt = kwargs.pop('format') if 'format' in kwargs else {}
-        fmt: Format = _fmt if isinstance(_fmt, Format) else Format(**{**fmt_args, **_fmt})
+        fmt = kwargs.pop('format') if 'format' in kwargs else {}
         
         priv, pub = cls.generate_keypair_raw(alg=alg, **kwargs)
-        priv_args = cls.generators[alg][1]
-        
-        s_priv = priv.private_bytes(encoding=fmt.private_encoding, format=fmt.private_format, **priv_args)
-        s_pub = pub.public_bytes(encoding=fmt.public_encoding, format=fmt.public_format)
-        
+
+        s_priv = cls.export_key(priv, format=fmt, alg=alg)
+        s_pub = cls.export_key(pub, format=fmt, alg=alg)
+
         return s_priv, s_pub
+
+    @classmethod
+    def export_key(cls, key: combined_key_types, **kwargs) -> bytes:
+        """
+        Export/serialize a given public/private key object as bytes.
+        
+        Uses the default formatting arguments for the detected algorithm from :py:meth:`.identify_algorithm`, but
+        you can also force it to treat it as a certain algorithm by passing ``alg``
+        
+        Uses default formatting options by looking up the algorithm in :py:attr:`.default_formats`
+        
+        Uses the private key serialization arguments for the detected algorithm out of :py:attr:`.generators`
+        
+        Example::
+            
+            >>> priv, pub = KeyManager.generate_keypair_raw('ed25519')
+            >>> key = KeyManager.export_key(pub)
+            >>> print(key.decode())
+            -----BEGIN PRIVATE KEY-----
+            MC4CAQAwBQYDK2VwBCIEIOeLS2XOcQz11VUnzh6KIZaNtT10YfzHv779zjm95XSy
+            -----END PRIVATE KEY-----
+        
+        :param str alg: An algorithm name as a string, e.g. ``rsa`` or ``ed25519``
+        :param combined_key_types key: An instance of a public/private key type listed in :py:attr:`.combined_key_types`
+        :keyword dict format: Override some or all of the default format/encoding for the keys.
+                              Dict Keys: private_format,public_format,private_encoding,public_encoding
+        :keyword Format format: If passed a :class:`.Format` instance, then this instance will be used for serialization
+                                instead of merging defaults from :py:attr:`.default_formats`
+        :keyword str alg: Use this algorithm name e.g. ``'rsa'`` instead of detecting using :meth:`.identify_algorithm`
+        :return bytes key: The serialized key.
+        """
+        alg = kwargs.pop('alg', cls.identify_algorithm(key))
+        fmt_args = cls.default_formats[alg]
+        priv_args = cls.generators[alg][1]
+        _fmt = kwargs.get('format', {})
+        fmt: Format = _fmt if isinstance(_fmt, Format) else Format(**{**fmt_args, **_fmt})
+
+        if isinstance(key, cls.raw_priv_types):
+            return key.private_bytes(encoding=fmt.private_encoding, format=fmt.private_format, **priv_args)
+        elif isinstance(key, cls.raw_pub_types):
+            return key.public_bytes(encoding=fmt.public_encoding, format=fmt.public_format)
+        else:
+            raise InvalidFormat(f'export_key expected a cryptography private/public key instance. got: {type(key)}')
 
     @classmethod
     def output_keypair(cls, priv: Union[str, BufferedWriter], pub: Union[str, TextIOWrapper],

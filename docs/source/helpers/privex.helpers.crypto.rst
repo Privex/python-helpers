@@ -7,7 +7,6 @@ About / Using Cryptography helpers
 ----------------------------------
 
 .. automodule:: privex.helpers.crypto
-   :noindex:
 
 
 Classes

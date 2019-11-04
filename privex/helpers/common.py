@@ -46,7 +46,7 @@ import logging
 import sys
 from decimal import Decimal, getcontext
 from os import getenv as env
-from typing import Sequence, List, Union, Tuple, Type
+from typing import Sequence, List, Union, Tuple, Type, Dict
 
 log = logging.getLogger(__name__)
 
@@ -517,6 +517,223 @@ def human_name(class_name: Union[str, bytes, callable, Type[object]]) -> str:
     
     return ''.join(new_name).strip()
 
+
+class Mocker(object):
+    """
+    This mock class is designed to be used either to act as a stand-in "noop" (no operation) object, which
+    could be used either as a drop-in replacement for a failed module / class import, or for certain unit tests.
+    
+    If you need additional functionality such as methods having actual behaviour, you can set attributes on a
+    Mocker instance to either a lambda, or point them at a real function/method::
+    
+        >>> m = Mocker()
+        >>> m.some_func = lambda a: a+1
+        >>> m.some_func(5)
+        6
+    
+    
+    **Example use case - fallback for unimportant module imports**
+    
+    Below is a real world example of using :class:`.Mocker` and :py:func:`privex.helpers.decorators.mock_decorator`
+    to simulate :py:mod:`pytest` - allowing your tests to run under the standard :py:mod:`unittest` framework if
+    a user doesn't have pytest (as long as your tests aren't critically dependent on PyTest).
+    
+    Try importing ``pytest`` then fallback to a mock pytest::
+    
+        >>> try:
+        ...     import pytest
+        ... except ImportError:
+        ...     from privex.helpers import Mocker, mock_decorator
+        ...     print('Failed to import pytest. Using privex.helpers.Mocker to fake pytest.')
+        ...     # Make pytest pretend to be the class 'module' (the class actually used for modules)
+        ...     pytest = Mocker.make_mock_class('module')
+        ...     # To make pytest.mark.skip work, we add the fake module 'mark', then set skip to `mock_decorator`
+        ...     pytest.add_mock_module('mark')
+        ...     pytest.mark.skip = mock_decorator
+        ...
+    
+    Since we added the mock module ``mark``, and set the attribute ``skip`` to point at ``mock_decorator``, the
+    test function ``test_something`` won't cause a syntax error. ``mock_decorator`` will just call test_something()
+    which doesn't do anything anyway::
+     
+        >>> @pytest.mark.skip(reason="this test doesn't actually do anything...")
+        ... def test_something():
+        ...     pass
+        >>>
+        >>> def test_other_thing():
+        ...     if True:
+        ...         return pytest.skip('cannot test test_other_thing because of an error')
+        ...
+        >>>
+    
+    **Generating "disguised" mock classes**
+    
+    If you need the mock class to appear to have a certain class name and/or module path, you can generate
+    "disguised" mock classes using :py:meth:`.make_mock_class` like so:
+    
+        >>> redis = Mocker.make_mock_class('Redis', module='redis')
+        >>> redis
+        <redis.Redis object at 0x7fd7402ea4a8>
+    
+    **A :class:`.Mocker` instance has the following behaviour**
+    
+    * Attributes that don't exist result in a function being returned, which accepts any arguments / keyword args,
+      and simply returns ``None``
+    
+    Example::
+    
+        >>> m = Mocker()
+        >>> repr(m.randomattr('hello', world=123))
+        'None'
+    
+    
+    * Arbitrary attributes ``x.something`` and items ``x['something']`` can be set on an instance, and they will
+      be similarly returned when they're accessed. Attributes and items share the same key/value's, so the
+      following examples are all accessing the same data::
+    
+    Example::
+    
+        >>> m = Mocker()
+        >>> m.example = 'hello'
+        >>> m['example'] = 'world'
+        >>> print(m.example)
+        world
+        >>> print(m['example'])
+        world
+    
+    * You can add arbitrary "modules" to a Mocker instance. With only the ``name`` argument, :py:meth:`.add_mock_module`
+      will add a "module" under the instance, which is really just another :class:`.Mocker` instance.
+    
+    Example::
+    
+        >>> m = Mocker()
+        >>> m.add_mock_module('my_module')
+        >>> m.my_module.example = 'hello'
+        >>> print(m.my_module['example'], m.my_module.example)
+        hello hello
+    
+    
+    """
+    mock_modules: dict
+    mock_attrs: dict
+    
+    def __init__(self, modules: dict = None, attributes: dict = None):
+        self.mock_attrs = {} if attributes is None else attributes
+        self.mock_modules = {} if modules is None else modules
+    
+    @classmethod
+    def make_mock_class(cls, name='Mocker', instance=True, **kwargs):
+        """
+        Return a customized mock class or create an instance which appears to be named ``name``
+        
+        Allows code which might check ``x.__class__.__name__`` to believe it's the correct object.
+        
+        Using the kwarg ``module`` you can change the module that the class / instance appears to have been imported
+        from, allowing for quite deceiving fake classes and instances.
+        
+        **Example usage**::
+        
+            >>> redis = Mocker.make_mock_class('Redis', module='redis')
+            >>> # As seen below, the class appears to be called Redis, and even claims to be from the module `redis`
+            >>> redis
+            <redis.Redis object at 0x7fd7402ea4a8>
+            >>> print(f'Module: {redis.__module__} - Class Name: {redis.__class__.__name__}')
+            Module: redis - Class Name: Redis
+        
+        **Creating methods/attributes dynamically**
+        
+        You can set arbitrary attributes to point at a function, or just set them to a lambda::
+        
+            >>> redis.exists = lambda key: 1
+            >>> redis.exists('hello')
+            1
+            >>> redis.hello()  # Non-existent attributes just act as a function that eats any args and returns None
+            None
+            
+        
+        :param name: The name to write onto the mock class's ``__name__`` (and ``__qualname__`` if not specified)
+        :param bool instance: If ``True`` then the disguised mock class will be returned as an instance. Otherwise
+                              the raw class itself will be returned for you to instantiate yourself.
+        :param kwargs: All kwargs (other than ``qualname``) are forwarded to ``__init__`` of the disguised class
+                       if ``instance`` is True.
+        :key str qualname: Optionally specify the "qualified name" to insert into ``__qualname__``. If this isn't
+                           specified, then ``name`` is used for qualname, which is fine for most cases anyway.
+        :key str module: Optionally override the module namespace that the class is supposedly from. If not specified,
+                         then the class will just inherit this module (``privex.helpers.common``)
+        :return:
+        """
+        qualname = kwargs.pop('qualname', name)
+        
+        class OuterMocker(cls):
+            pass
+        
+        OuterMocker.__name__ = name
+        OuterMocker.__qualname__ = qualname
+        
+        if 'module' in kwargs:
+            OuterMocker.__module__ = kwargs['module']
+        
+        return OuterMocker() if instance else OuterMocker
+        
+    def add_mock_module(self, name: str, value=None, mock_attrs: dict = None, mock_modules: dict = None):
+        """
+        Add a fake sub-module to this Mocker instance.
+        
+        Example::
+        
+            >>> m = Mocker()
+            >>> m.add_mock_module('my_module')
+            >>> m.my_module.example = 'hello'
+            >>> print(m.my_module['example'], m.my_module.example)
+            hello hello
+        
+        
+        :param str name: The name of the module to add.
+        :param value: Set the "module" to this object, instead of an instance of :class:`.Mocker`
+        :param dict mock_attrs: If ``value`` is ``None``, then this can optionally contain a dictionary of
+                                attributes/items to pre-set on the Mocker instance.
+        :param dict mock_modules: If ``value`` is ``None``, then this can optionally contain a dictionary of
+                                 "modules" to pre-set on the Mocker instance.
+        """
+        mock_attrs = {} if mock_attrs is None else mock_attrs
+        mock_modules = {} if mock_modules is None else mock_modules
+        
+        self.mock_modules[name] = Mocker(modules=mock_modules, attributes=mock_attrs) if value is None else value
+
+    def __getattribute__(self, item):
+        try:
+            return super().__getattribute__(item)
+        except AttributeError:
+            pass
+        try:
+            if item in super().__getattribute__('mock_modules'):
+                return self.mock_modules[item]
+        except AttributeError:
+            pass
+        try:
+            if item in super().__getattribute__('mock_attrs'):
+                return self.mock_attrs[item]
+        except AttributeError:
+            pass
+        
+        return lambda *args, **kwargs: None
+    
+    def __setattr__(self, key, value):
+        if key in ['mock_attrs', 'mock_modules']:
+            return super().__setattr__(key, value)
+        m = super().__getattribute__('mock_attrs')
+        m[key] = value
+    
+    def __getitem__(self, item):
+        return self.__getattribute__(item)
+    
+    def __setitem__(self, key, value):
+        self.__setattr__(key, value)
+
+    @property
+    def __name__(self):
+        return self.__class__.__name__
+    
 
 class Dictable:
     """

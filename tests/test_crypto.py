@@ -38,12 +38,55 @@ Test cases for the :py:mod:`privex.helpers.crypto` module
 
 
 """
-from privex.helpers import EncryptHelper, EncryptKeyMissing, EncryptionError, InvalidFormat
-from privex.helpers.crypto.KeyManager import KeyManager
+import base64
+import warnings
+from os import path
+from os.path import join
+from tempfile import TemporaryDirectory
 from tests.base import PrivexBaseCase
 
+from privex.helpers import Mocker, stringify, plugin
+MOD_LOAD_ERR = f"WARNING: `cryptography` package not installed (or other error loading privex.helpers.crypto). " \
+               f"Skipping test case {__name__}."
 
-class TestEncryptHelper(PrivexBaseCase):
+try:
+    import pytest
+    HAS_PYTEST = True
+except ImportError:
+    warnings.warn('WARNING: Could not import pytest. You should run "pip3 install pytest" to ensure tests work best')
+    pytest = Mocker.make_mock_class('module')
+    pytest.skip = lambda msg, allow_module_level=True: warnings.warn(msg)
+    HAS_PYTEST = False
+
+if plugin.HAS_CRYPTO:
+    try:
+        # noinspection PyUnresolvedReferences
+        from privex.helpers import EncryptHelper, EncryptKeyMissing, EncryptionError, InvalidFormat, stringify
+        # noinspection PyUnresolvedReferences
+        from privex.helpers.crypto.KeyManager import KeyManager
+    except ImportError:
+        pytest.skip(MOD_LOAD_ERR, allow_module_level=True)
+        if not HAS_PYTEST: raise ImportError(f"(ImportError in {__file__}) {MOD_LOAD_ERR}")
+else:
+    pytest.skip(MOD_LOAD_ERR, allow_module_level=True)
+    if not HAS_PYTEST: raise ImportError("(plugin.HAS_CRYPTO = False) " + MOD_LOAD_ERR)
+
+
+class CryptoBaseCase(PrivexBaseCase):
+    fake_b64_key = stringify(base64.urlsafe_b64encode(b'not a key'))
+
+    @staticmethod
+    def _sign_verify(priv, pub):
+        """Helper method to avoid duplicating sign+verify code for every algorithm"""
+        km = KeyManager(priv)  # KeyManager with private key (public key interpolated from private key)
+        km_pub = KeyManager(pub)  # KeyManager with only public key
+        sig = km.sign('hello world')  # Sign 'hello world' with the private key
+        # Verify the signature, these methods will raise InvalidSignature if it doesn't verify.
+        km_pub.verify(signature=sig, message='hello world')  # Verify with pubkey-only instance
+        km.verify(signature=sig, message='hello world')  # Verify with privkey-only instance
+
+
+class TestEncryptHelper(CryptoBaseCase):
     """Test :py:class:`.EncryptHelper` key generation, encryption, decryption and more"""
     txt = 'This is a test.'
 
@@ -111,9 +154,7 @@ class TestEncryptHelper(PrivexBaseCase):
         self.assertFalse(eh.is_encrypted(self.txt))
 
 
-class TestKeyManager(PrivexBaseCase):
-    """Test :py:class:`.KeyManager` asymmetric key generation and usage"""
-    
+class TestKeyManagerGeneration(CryptoBaseCase):
     def test_rsa_gen(self):
         """Generate an RSA 2048 + 4096-bit key, check the pub/priv lengths, and confirm they're formatted correctly"""
         priv, pub = KeyManager.generate_keypair()
@@ -127,7 +168,7 @@ class TestKeyManager(PrivexBaseCase):
         self.assertAlmostEqual(len(pub), 724, delta=32)
         self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
         self.assertIn('ssh-rsa', pub.decode('utf-8'))
-
+    
     def test_ecdsa_gen(self):
         """Generate an ECDSA keypair, check the pub/priv lengths, and confirm they're formatted correctly"""
         priv, pub = KeyManager.generate_keypair('ecdsa')
@@ -135,7 +176,7 @@ class TestKeyManager(PrivexBaseCase):
         self.assertAlmostEqual(len(pub), 204, delta=16)
         self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
         self.assertEqual('ecdsa-', pub.decode('utf-8')[0:6])
-
+    
     def test_ed25519_gen(self):
         """Generate an Ed25519 keypair, check the pub/priv lengths, and confirm they're formatted correctly"""
         priv, pub = KeyManager.generate_keypair('ed25519')
@@ -144,6 +185,27 @@ class TestKeyManager(PrivexBaseCase):
         self.assertIn('---BEGIN PRIVATE', priv.decode('utf-8'))
         self.assertEqual('ssh-ed25519', pub.decode('utf-8')[0:11])
 
+    def test_output_keypair(self):
+        """Test outputting a keypair to files creates files, and file contents match the returned priv/pub"""
+        with TemporaryDirectory() as d:
+            priv_file, pub_file = join(d, 'id_rsa'), join(d, 'id_rsa.pub')
+            priv, pub = KeyManager.output_keypair(priv=priv_file, pub=pub_file)
+            self.assertTrue(path.exists(priv_file), msg=f"Test file exists: {priv_file}")
+            self.assertTrue(path.exists(pub_file), msg=f"Test file exists: {pub_file}")
+            
+            with open(priv_file) as fp:
+                data = fp.read().strip()
+                key = priv.decode().strip()
+                self.assertEqual(key, data, msg='Test private key file contents match returned priv key')
+            with open(pub_file) as fp:
+                data = fp.read().strip()
+                key = pub.decode().strip()
+                self.assertEqual(key, data, msg='Test public key file contents match returned pub key')
+            
+
+class TestKeyManagerLoad(CryptoBaseCase):
+    """Test :py:class:`.KeyManager` asymmetric key loading"""
+    
     def test_load_invalid(self):
         """Initialise KeyManager with an invalid key to confirm it raises InvalidFormat"""
         with self.assertRaises(InvalidFormat):
@@ -155,14 +217,14 @@ class TestKeyManager(PrivexBaseCase):
         # If the keys were invalid, KeyManager should raise InvalidFormat and fail the test
         KeyManager(priv)
         KeyManager(pub)
-
+    
     def test_ecdsa_load(self):
         """Generate and attempt to load an ECDSA keypair"""
         priv, pub = KeyManager.generate_keypair('ecdsa')
         # If the keys were invalid, KeyManager should raise InvalidFormat and fail the test
         KeyManager(priv)
         KeyManager(pub)
-
+    
     def test_ed25519_load(self):
         """Generate and attempt to load an Ed25519 keypair"""
         priv, pub = KeyManager.generate_keypair('ed25519')
@@ -170,16 +232,91 @@ class TestKeyManager(PrivexBaseCase):
         KeyManager(priv)
         KeyManager(pub)
 
-    @staticmethod
-    def _sign_verify(priv, pub):
-        """Helper method to avoid duplicating sign+verify code for every algorithm"""
-        km = KeyManager(priv)  # KeyManager with private key (public key interpolated from private key)
-        km_pub = KeyManager(pub)  # KeyManager with only public key
-        sig = km.sign('hello world')  # Sign 'hello world' with the private key
-        # Verify the signature, these methods will raise InvalidSignature if it doesn't verify.
-        km_pub.verify(signature=sig, message='hello world')  # Verify with pubkey-only instance
-        km.verify(signature=sig, message='hello world')  # Verify with privkey-only instance
+    def test_load_keyfile_sign_verify_rsa(self):
+        """
+        Generate a key pair + save to disk, then load the keypair from disk. Confirm that the keys on disk definitely
+        match the returned tuple by running signature verification.
+        
+        Uses KeyManager with both the public/private keys from disk, and the output_keypair returned public/private keys
+        """
+        with TemporaryDirectory() as d:
+            # Generate and output an RSA key to id_rsa and id_rsa.pub
+            priv_file, pub_file = join(d, 'id_rsa'), join(d, 'id_rsa.pub')
+            priv, pub = KeyManager.output_keypair(priv=priv_file, pub=pub_file)
+            # Load the returned private + public key bytes
+            km_ret, km_ret_pub = KeyManager(priv), KeyManager(pub)
+            
+            # Load the private/public keys from the files
+            km = KeyManager.load_keyfile(priv_file)
+            self.assertTrue(isinstance(km, KeyManager))
+            
+            km_pub = KeyManager.load_keyfile(pub_file)
+            self.assertTrue(isinstance(km_pub, KeyManager))
+            
+            # Sign 'hello world' with both the returned private key, and the id_rsa file loaded from disk
+            sig = km.sign('hello world')
+            sig_ret = km_ret.sign('hello world')
+            
+            # Make sure the keys are the same by verifying the signature (signed by the keys from disk) with
+            # KeyManager instances using the public/private keys loaded from disk + returned public/private keys
+            km.verify(sig, 'hello world')
+            km_pub.verify(sig, 'hello world')
+            km_ret.verify(sig, 'hello world')
+            km_ret_pub.verify(sig, 'hello world')
+            
+            # Same as above, but verifying the signature made by the KeyManager using the returned private key
+            km.verify(sig_ret, 'hello world')
+            km_ret.verify(sig_ret, 'hello world')
+            km_pub.verify(sig_ret, 'hello world')
+            km_ret_pub.verify(sig_ret, 'hello world')
+
+    def test_load_keyfile_noexist(self):
+        """Test :py:meth:`.KeyManager.load_keyfile` raises :class:`FileNotFoundError` with non-existent path"""
+        with TemporaryDirectory() as d:
+            with self.assertRaises(FileNotFoundError):
+                KeyManager.load_keyfile(join(d, 'non_existent'))
+
+    def test_load_keyfile_corrupt_public(self):
+        """Test :py:meth:`.KeyManager.load_keyfile` raises :class:`.InvalidFormat` with corrupted public key"""
     
+        with TemporaryDirectory() as d:
+            keyfile = join(d, 'corrupt_key')
+            with open(keyfile, 'w') as fp:
+                fp.write('ssh-rsa AAAAThisIsNotARealKey')
+            with self.assertRaises(InvalidFormat):
+                KeyManager.load_keyfile(keyfile)
+
+    def test_load_keyfile_corrupt_public_2(self):
+        """
+        Test :py:meth:`.KeyManager.load_keyfile` raises :class:`.InvalidFormat` with corrupted public key
+        (but with valid b64)
+        """
+    
+        with TemporaryDirectory() as d:
+            keyfile = join(d, 'corrupt_key')
+            with open(keyfile, 'w') as fp:
+                fp.write(f'ssh-rsa {self.fake_b64_key}')
+            with self.assertRaises(InvalidFormat):
+                KeyManager.load_keyfile(keyfile)
+    
+    def test_load_keyfile_corrupt_private(self):
+        """Test :py:meth:`.KeyManager.load_keyfile` raises :class:`.InvalidFormat` with corrupted PEM private key"""
+    
+        with TemporaryDirectory() as d:
+            keydata = "-----BEGIN PRIVATE KEY-----\n"
+            keydata += self.fake_b64_key
+            keydata += "\n-----END PRIVATE KEY-----\n"
+            
+            keyfile = join(d, 'corrupt_key')
+            with open(keyfile, 'w') as fp:
+                fp.write(keydata)
+            with self.assertRaises(InvalidFormat):
+                KeyManager.load_keyfile(keyfile)
+
+
+class TestKeyManagerSignVerifyEncrypt(CryptoBaseCase):
+    """Test :py:class:`.KeyManager` asymmetric key signing/verification, and encryption/decryption"""
+
     def test_rsa_sign_verify(self):
         """Attempt to sign and verify a message using an RSA keypair using :py:meth:`._sign_verify` test helper"""
         priv, pub = KeyManager.generate_keypair()
@@ -208,7 +345,7 @@ class TestKeyManager(PrivexBaseCase):
         self.assertEqual(km.decrypt(enc).decode('utf-8'), msg)
         self.assertEqual(km.decrypt(enc_pub).decode('utf-8'), msg)
         
-        
+    
         
 
 

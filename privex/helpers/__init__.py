@@ -59,11 +59,14 @@ from privex.helpers.exceptions import *
 from privex.helpers.plugin import *
 from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, cached
 
+from privex.helpers import plugin
+
 log = logging.getLogger(__name__)
 
 
 try:
     from privex.helpers.cache.RedisCache import RedisCache
+    plugin.HAS_REDIS = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "RedisCache", not loading RedisCache')
     pass
@@ -75,22 +78,26 @@ except ImportError:
 
 try:
     from privex.helpers.crypto import Format, KeyManager, EncryptHelper, auto_b64decode, is_base64
+    plugin.HAS_CRYPTO = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "crypto", not loading cryptography helpers')
     pass
 
 try:
     from privex.helpers.setuppy.common import extras_require, reqs
+    plugin.HAS_SETUPPY_COMMON = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
 
 try:
     from privex.helpers.setuppy.commands import BumpCommand, ExtrasCommand
+    plugin.HAS_SETUPPY_COMMANDS = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
 
 try:
     from privex.helpers.setuppy.bump import bump_version, get_current_ver
+    plugin.HAS_SETUPPY_COMMANDS = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
 
@@ -115,7 +122,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.1.0'
+VERSION = '2.2.0'
 
 
 

@@ -6,7 +6,8 @@ TestNet
 .. autoclass:: TestNet
    :noindex:
 
-.. automethod:: __init__
+   .. automethod:: __init__
+      :noindex:
 
 
 Methods

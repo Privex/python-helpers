@@ -5,8 +5,8 @@ Format
 
 .. autoclass:: Format
 
-
-.. automethod:: __init__
+   .. automethod:: __init__
+      :noindex:
 
 
 Methods
