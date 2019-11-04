@@ -13,7 +13,10 @@ formats: all
 # Install package + docs requirements
 python:
   version: 3.7
-  pip_install: true
-  extra_requirements:
-    - dev
+  install:
+    - method: pip
+      path: .
+      extra_requirements:
+        - docs
+        - dev
 
