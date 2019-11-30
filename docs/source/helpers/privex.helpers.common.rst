@@ -38,8 +38,6 @@ privex.helpers.common
       :toctree: common
 
       ErrHelpParser
-      Dictable
-      Mocker
    
    
 

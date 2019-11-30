@@ -24,6 +24,12 @@ import sphinx_rtd_theme
 BASE_DIR = dirname(dirname(dirname(abspath(__file__))))
 
 sys.path.insert(0, BASE_DIR)
+PY_PATH = os.getenv('PYTHON_PATH', '')
+
+if PY_PATH != '':
+    PY_PATH = ':' + PY_PATH
+
+os.environ['PYTHON_PATH'] = BASE_DIR + PY_PATH
 
 # -- Project information -----------------------------------------------------
 

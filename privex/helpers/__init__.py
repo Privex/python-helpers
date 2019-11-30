@@ -53,6 +53,7 @@ import logging
 import warnings
 
 from privex.helpers.common import *
+from privex.helpers.collections import *
 from privex.helpers.decorators import *
 from privex.helpers.net import *
 from privex.helpers.exceptions import *
@@ -122,7 +123,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.2.0'
+VERSION = '2.3.0'
 
 
 

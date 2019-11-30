@@ -1,6 +1,6 @@
 \_\_init\_\_
 ============
 
-.. currentmodule:: privex.helpers.common
+.. currentmodule:: privex.helpers.collections
 
 .. automethod:: Mocker.__init__

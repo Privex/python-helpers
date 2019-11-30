@@ -1,10 +1,10 @@
 Mocker
 ======
 
-.. currentmodule:: privex.helpers.common
+.. currentmodule:: privex.helpers.collections
 
 .. autoclass:: Mocker
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

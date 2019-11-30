@@ -5,6 +5,7 @@
     privex.helpers.asyncx
     privex.helpers.cache
     privex.helpers.common
+    privex.helpers.collections
     privex.helpers.crypto
     privex.helpers.decorators
     privex.helpers.django
