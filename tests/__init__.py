@@ -180,6 +180,7 @@ from tests.test_rdns import TestIPReverseDNS
 from tests.test_parse import TestParseHelpers
 from tests.test_net import TestNet
 from tests.test_collections import TestIsNamedTuple, TestDictableNamedtuple, TestDictObject
+from tests.test_extras import TestAttrs
 
 if env_bool('DEBUG', False) is True:
     LogHelper('privex.helpers', level=logging.DEBUG).add_console_handler(logging.DEBUG)

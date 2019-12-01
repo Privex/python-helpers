@@ -19,6 +19,7 @@ Module Contents
       convert_dictable_namedtuple
       dictable_namedtuple
       is_namedtuple
+      make_dict_tuple
       subclass_dictable_namedtuple
    
    
@@ -36,6 +37,5 @@ Module Contents
    
    
 
-   
    
    
