@@ -102,6 +102,11 @@ try:
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "setuppy.bump", not loading packaging helpers')
 
+try:
+    from privex.helpers.extras import *
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "extras", cannot load any extras.* modules...')
+
 
 def _setup_logging(level=logging.WARNING):
     """
