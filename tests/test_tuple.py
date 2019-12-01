@@ -40,8 +40,8 @@ Test cases for :py:func:`.is_namedtuple` and :py:func:`.dictable_namedtuple`
 """
 import inspect
 from typing import Union
-from collections import namedtuple
-from privex.helpers import dictable_namedtuple, is_namedtuple
+from collections import namedtuple, OrderedDict
+from privex.helpers import dictable_namedtuple, is_namedtuple, subclass_dictable_namedtuple, convert_dictable_namedtuple
 from tests.base import PrivexBaseCase
 import logging
 
@@ -245,11 +245,8 @@ class TestDictableNamedtuple(PrivexBaseCase):
     def test_dict_cast(self):
         """Test casting dictable_namedtuple using ``dict`` works as expected, but fails on normal namedtuple"""
         di, ni = self.example_items
-
-        dict_di = dict(di)
-        self.assertIs(type(dict_di), dict)
-        self.assertListEqual(['name', 'description'], list(dict_di.keys()))
-        self.assertListEqual(['Box', 'Small Cardboard Box'], list(dict_di.values()))
+        
+        self._check_cast_dict(di)
 
         # The standard ``namedtuple`` instances cannot be casted to a dict, they should throw a ValueError
         # or a TypeError.
@@ -260,18 +257,48 @@ class TestDictableNamedtuple(PrivexBaseCase):
         """Test ``._asdict`` works on both dictable + normal namedtuple"""
         di, ni = self.example_items
 
-        dict_di = di._asdict()
-        self.assertIs(type(dict_di), dict)
-        self.assertListEqual(['name', 'description'], list(dict_di.keys()))
-        self.assertListEqual(['Box', 'Small Cardboard Box'], list(dict_di.values()))
+        self._check_asdict(di)
 
-        dict_ni = ni._asdict()
-        self.assertIs(type(dict_ni), dict)
-        self.assertListEqual(['name', 'description'], list(dict_ni.keys()))
-        self.assertListEqual(['Box', 'Small Cardboard Box'], list(dict_ni.values()))
+        self._check_asdict(ni)
 
+    def _check_asdict(self, inst):
+        dict_inst = inst._asdict()
+        self.assertIn(type(dict_inst), [dict, OrderedDict])
+        self.assertListEqual(['name', 'description'], list(dict_inst.keys()))
+        self.assertListEqual(['Box', 'Small Cardboard Box'], list(dict_inst.values()))
 
+    def _check_cast_dict(self, inst):
+        dict_inst = dict(inst)
+        self.assertIn(type(dict_inst), [dict, OrderedDict])
+        self.assertListEqual(['name', 'description'], list(dict_inst.keys()))
+        self.assertListEqual(['Box', 'Small Cardboard Box'], list(dict_inst.values()))
 
+    def test_subclass(self):
+        """Test subclass_dictable_namedtuple converts :attr:`.NmItem` into a dictable_namedtuple type """
+        d_nt = subclass_dictable_namedtuple(self.NmItem)
+        
+        di = d_nt('Box', 'Small Cardboard Box')
+        self._check_dictable(di)
 
+    def test_convert(self):
+        """Test convert_dictable_namedtuple converts example namedtuple instance into a dictable_namedtuple instance"""
+        ni = self.example_items[1]
+        di = convert_dictable_namedtuple(ni)
+        self._check_dictable(di)
 
-
+    def _check_dictable(self, di):
+        # Confirm the object is named 'Item'
+        self.assertIn('Item(', str(di))
+        # Test accessing by attribute
+        self.assertEqual(di.name, 'Box')
+        self.assertEqual(di.description, 'Small Cardboard Box')
+        # Test accessing by item/key
+        self.assertEqual(di['name'], 'Box')
+        self.assertEqual(di['description'], 'Small Cardboard Box')
+        # Test accessing by tuple index
+        self.assertEqual(di[0], 'Box')
+        self.assertEqual(di[1], 'Small Cardboard Box')
+        # Test converting to a dict (via dict())
+        self._check_cast_dict(di)
+        # Test converting to a dict (via ._asdict())
+        self._check_asdict(di)

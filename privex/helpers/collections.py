@@ -79,7 +79,8 @@ Unlike the normal :func:`.namedtuple` types, ``dictable_namedtuple``s add extra 
     * Can convert instance into a dict simply by casting: ``dict(john)``
 
     * Can set new items/attributes on an instance, even if they weren't previously defined.
-
+    
+    * NOTE: You cannot edit an original namedtuple field defined on the type, those remain read only
 
 There are three functions available for working with ``dictable_namedtuple`` classes/instances,
 each for different purposes.
@@ -203,9 +204,13 @@ with ``dictable_namedtuple``)
     SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
+import inspect
 import sys
 from collections import namedtuple
 from typing import Dict, Optional, NamedTuple, Union, Type
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class DictObject(dict):
@@ -414,100 +419,117 @@ def subclass_dictable_namedtuple(named_type: type, typename=None, module=None, *
     module = named_type.__module__ if module is None else module
     read_only = kwargs.pop('read_only', False)
 
-    class DictableNamedTuple(named_type):
-        """
-        Customized :func:`.namedtuple` class - part of :func:`privex.helpers.common.dictable_namedtuple`
+    _dt = make_dict_tuple(typename, ' '.join(named_type._fields), read_only=read_only)
 
-        Unlike the normal :func:`.namedtuple` class, this class supports extra functionality:
-
-            * Can access fields via item/key: ``john['first_name']``
-
-            * Can convert instance into a dict simply by casting: ``dict(john)``
-
-            * Can set new items/attributes on an instance, even if they weren't previously defined.
-            
-            * NOTE: You cannot edit an original namedtuple field defined on the type, those remain read only
-
-        **Example - creating dictable_namedtuple, adding new item 'middle_name', and casting to dict**::
-
-            >>> from privex.helpers import dictable_namedtuple
-            >>> Person = dictable_namedtuple('Person', 'first_name last_name')
-            >>> john = Person('John', 'Doe')
-            >>> john
-            Person(first_name='John', last_name='Doe')
-            >>> john['middle_name'] = 'Davis'
-            >>> john
-            first_name='John', last_name='Doe', middle_name='Davis'
-            Person(first_name='John', last_name='Doe', middle_name='Davis')
-            >>> dict(john)
-            {'first_name': 'John', 'last_name': 'Doe', 'middle_name': 'Davis'}
-        
-        """
-        _READ_ONLY = read_only
-        
-        def __init__(self, *args, **kwargs):
-            self._extra_items = DictObject()
-        
-        def __iter__(self):
-            """This ``__iter__`` method allows for casting a dictable_namedtuple instance using ``dict(my_nt)``"""
-            for k in self._fields: yield (k, getattr(self, k),)
-        
-        def __getitem__(self, item):
-            """Handles when a dictable_namedtuple instance is accessed like ``my_nt['abc']`` or ``my_nt[0]``"""
-            if type(item) is int:
-                return self.__getattribute__(self._fields[item])
-            try:
-                return self._extra_items[item]
-            except (KeyError, AttributeError):
-                return self.__getattribute__(item)
-                
-        def __getattribute__(self, item):
-            """Handles when a dictable_namedtuple instance is accessed like ``my_nt.abcd``"""
-            try:
-                v = super().__getattribute__('_extra_items')
-                v = v[item]
-            except (KeyError, AttributeError):
-                v = super().__getattribute__(item)
-            return v
-        
-        def __setitem__(self, key, value):
-            """Handles when a dictable_namedtuple instance is accessed like ``my_nt['abc'] = 'def'``"""
-            if hasattr(self, key):
-                return self.__setattr__(key, value)
-            if self._READ_ONLY:
-                raise KeyError(f"{self.__class__.__name__} is read only. You cannot set a non-existent field.")
-            self._extra_items[key] = value
-            if key not in self._fields:
-                self._fields = self._fields + (key,)
-
-        def __setattr__(self, key, value):
-            """Handles when a dictable_namedtuple instance is accessed like ``my_nt.abcd = 'def'``"""
-            if key in ['_extra_items', '_fields'] or key in self._fields:
-                return super().__setattr__(key, value)
-            if self._READ_ONLY:
-                raise AttributeError(f"{self.__class__.__name__} is read only. You cannot set a non-existent field.")
-            self._extra_items[key] = value
-            if key not in self._fields:
-                self._fields = self._fields + (key,)
-        
-        def _asdict(self):
-            """
-            The original namedtuple ``_asdict`` doesn't work with our :meth:`.__iter__`, so we override it
-            for compatibility. Simply calls ``return dict(self)`` to convert the instance to a dict.
-            """
-            return dict(self)
-        
-        def __repr__(self):
-            _n = ', '.join(f"{name}='{getattr(self, name)}'" for name in self._fields)
-            return f"{self.__class__.__name__}({_n})"
-    
-    DictableNamedTuple.__name__ = typename
-    DictableNamedTuple.__qualname__ = typename
-    DictableNamedTuple.__bases__ = (named_type, tuple)
+    if module is None:
+        try:
+            module = sys._getframe(1).f_globals.get('__name__', '__main__')
+        except (AttributeError, ValueError):
+            pass
 
     if module is not None:
-        DictableNamedTuple.__module__ = module
-    return DictableNamedTuple
+        _dt.__module__ = module
+    return _dt
+
+
+def make_dict_tuple(typename, field_names, *args, **kwargs):
+    """
+    Generates a :func:`collections.namedtuple` type, with added / modified methods injected to make it
+    into a ``dictable_namedtuple``.
+    
+    Note: You probably want to be using :func:`.dictable_namedtuple` instead of calling this directly.
+    """
+    read_only = kwargs.pop('read_only', False)
+    module = kwargs.pop('module', None)
+    
+    # Create a namedtuple type to use as a base
+    BaseNT = namedtuple(typename, field_names, **kwargs)
+
+    def __init__(self, *args, **kwargs):
+        self.__dict__['_extra_items'] = dict()
+        for i, a in enumerate(list(args)):
+            self.__dict__[self._fields[i]] = a
+        for k, a in kwargs.items():
+            self.__dict__[k] = a
+    
+    def __iter__(self):
+        """This ``__iter__`` method allows for casting a dictable_namedtuple instance using ``dict(my_nt)``"""
+        for k in self._fields: yield (k, getattr(self, k),)
+
+    def __getitem__(self, item):
+        """Handles when a dictable_namedtuple instance is accessed like ``my_nt['abc']`` or ``my_nt[0]``"""
+        if type(item) is int:
+            return self.__dict__[self._fields[item]]
+        return getattr(self, item)
+
+    def __getattr__(self, item):
+        """Handles when a dictable_namedtuple instance is accessed like ``my_nt.abcd``"""
+        try:
+            _v = object.__getattribute__(self, '_extra_items')
+            return _v[item]
+        except (KeyError, AttributeError):
+            return object.__getattribute__(self, item)
+
+    def __setitem__(self, key, value):
+        """Handles when a dictable_namedtuple instance is accessed like ``my_nt['abc'] = 'def'``"""
+        if hasattr(self, key):
+            return tuple.__setattr__(self, key, value)
+        if self._READ_ONLY:
+            raise KeyError(f"{self.__class__.__name__} is read only. You cannot set a non-existent field.")
+        self._extra_items[key] = value
+        if key not in self._fields:
+            tuple.__setattr__(self, '_fields', self._fields + (key,))
+
+    def __setattr__(self, key, value):
+        """Handles when a dictable_namedtuple instance is accessed like ``my_nt.abcd = 'def'``"""
+        if key in ['_extra_items', '_fields'] or key in self._fields:
+            return tuple.__setattr__(self, key, value)
+        if self._READ_ONLY:
+            raise AttributeError(f"{self.__class__.__name__} is read only. You cannot set a non-existent field.")
+        self._extra_items[key] = value
+        if key not in self._fields:
+            tuple.__setattr__(self, '_fields', self._fields + (key,))
+
+    def _asdict(self):
+        """
+        The original namedtuple ``_asdict`` doesn't work with our :meth:`.__iter__`, so we override it
+        for compatibility. Simply calls ``return dict(self)`` to convert the instance to a dict.
+        """
+        return dict(self)
+
+    def __repr__(self):
+        _n = ', '.join(f"{name}='{getattr(self, name)}'" for name in self._fields)
+        return f"{self.__class__.__name__}({_n})"
+
+    # Inject our methods defined above into the namedtuple type BaseNT
+    BaseNT.__getattr__ = __getattr__
+    BaseNT.__getitem__ = __getitem__
+    BaseNT.__setitem__ = __setitem__
+    BaseNT.__setattr__ = __setattr__
+    BaseNT._asdict = _asdict
+    BaseNT.__repr__ = __repr__
+    BaseNT.__iter__ = __iter__
+    BaseNT.__init__ = __init__
+    BaseNT._READ_ONLY = read_only
+    
+    # Create a class for BaseNT with tuple + object mixins, allowing things like __dict__ to function properly
+    # and allowing for tuple.__setattr__ / object.__getattribute__ calls.
+    class K(BaseNT, tuple, object):
+        pass
+
+    # Get the calling module so we can overwrite the module name of the class.
+    if module is None:
+        try:
+            module = sys._getframe(1).f_globals.get('__name__', '__main__')
+        except (AttributeError, ValueError):
+            pass
+    
+    # Overwrite the type name + module to match the originally requested typename
+    K.__name__ = BaseNT.__name__
+    K.__qualname__ = BaseNT.__qualname__
+    K.__module__ = module
+
+    return K
 
 
 def dictable_namedtuple(typename, field_names, *args, **kwargs) -> Union[Type[namedtuple], dict]:
@@ -602,8 +624,6 @@ def dictable_namedtuple(typename, field_names, *args, **kwargs) -> Union[Type[na
     """
     module = kwargs.get('module', None)
     read_only = kwargs.pop('read_only', False)
-    # First we create a namedtuple "type" using the same arguments we were passed
-    BaseNT = namedtuple(typename, field_names, *args, **kwargs)
     
     # As per namedtuple's comment block, we need to set __module__ to the frame
     # where the named tuple is created, otherwise it can't be pickled properly.
@@ -613,11 +633,8 @@ def dictable_namedtuple(typename, field_names, *args, **kwargs) -> Union[Type[na
             module = sys._getframe(1).f_globals.get('__name__', '__main__')
         except (AttributeError, ValueError):
             pass
-    # Then we create a class which inherits the namedtuple type we've created, so we can easily
-    # override / add new attributes and methods
-    # DictableNamedTuple = convert_dictable_namedtuple(BaseNT, typename=typename, module=module)
-    DictableNamedTuple = subclass_dictable_namedtuple(BaseNT, module=module, read_only=read_only, *args, **kwargs)
-    return DictableNamedTuple
+
+    return make_dict_tuple(typename, field_names, module=module, read_only=read_only, *args, **kwargs)
 
 
 class Dictable:
