@@ -88,19 +88,19 @@ try:
     from privex.helpers.setuppy.common import extras_require, reqs
     plugin.HAS_SETUPPY_COMMON = True
 except ImportError:
-    log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
+    log.debug('privex.helpers __init__ failed to import "setuppy.common", not loading packaging helpers')
 
 try:
     from privex.helpers.setuppy.commands import BumpCommand, ExtrasCommand
     plugin.HAS_SETUPPY_COMMANDS = True
 except ImportError:
-    log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
+    log.debug('privex.helpers __init__ failed to import "setuppy.commands", not loading packaging helpers')
 
 try:
     from privex.helpers.setuppy.bump import bump_version, get_current_ver
-    plugin.HAS_SETUPPY_COMMANDS = True
+    plugin.HAS_SETUPPY_BUMP = True
 except ImportError:
-    log.debug('privex.helpers __init__ failed to import "setuppy", not loading setup.py packaging helpers')
+    log.debug('privex.helpers __init__ failed to import "setuppy.bump", not loading packaging helpers')
 
 
 def _setup_logging(level=logging.WARNING):
@@ -123,7 +123,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.3.0'
+VERSION = '2.3.1'
 
 
 
