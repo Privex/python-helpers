@@ -10,6 +10,7 @@
     privex.helpers.decorators
     privex.helpers.django
     privex.helpers.exceptions
+    privex.helpers.extras
     privex.helpers.net
     privex.helpers.plugin
     privex.helpers.settings

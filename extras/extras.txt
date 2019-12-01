@@ -1,0 +1,2 @@
+# All packages required for the `extras` module.
+attrs
