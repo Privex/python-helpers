@@ -95,3 +95,30 @@ class TestBoolHelpers(PrivexBaseCase):
         self.assertFalse(helpers.empty(['world'], itr=True))
         self.assertFalse(helpers.empty(('world',), itr=True))
         self.assertFalse(helpers.empty({'hello': 'world'}, itr=True))
+    
+    def test_emptyif_with_is_not_empty(self):
+        self.assertEqual(helpers.empty_if("", "empty", "not empty"), "empty")
+        self.assertEqual(helpers.empty_if(None, "empty", "not empty"), "empty")
+        self.assertEqual(helpers.empty_if(0, "empty", "not empty", zero=True), "empty")
+
+        self.assertEqual(helpers.empty_if("hello", "empty", "not empty"), "not empty")
+        self.assertEqual(helpers.empty_if(1234, "empty", "not empty"), "not empty")
+        self.assertEqual(helpers.empty_if([1, 2, 3], "empty", "not empty"), "not empty")
+
+    def test_emptyif_only_empty(self):
+        self.assertEqual(helpers.empty_if("", "empty"), "empty")
+        self.assertEqual(helpers.empty_if(None, "empty"), "empty")
+        self.assertEqual(helpers.empty_if(0, "empty", zero=True), "empty")
+    
+        self.assertEqual(helpers.empty_if("hello", "empty"), "hello")
+        self.assertEqual(helpers.empty_if(1234, "empty"), 1234)
+        self.assertListEqual(helpers.empty_if([1, 2, 3], "empty"), [1, 2, 3])
+
+    def test_emptyif_only_value(self):
+        self.assertIsNone(helpers.empty_if(""))
+        self.assertIsNone(helpers.empty_if(None))
+        self.assertIsNone(helpers.empty_if(0, zero=True))
+    
+        self.assertEqual(helpers.empty_if("hello"), "hello")
+        self.assertEqual(helpers.empty_if(1234), 1234)
+        self.assertListEqual(helpers.empty_if([1, 2, 3]), [1, 2, 3])
