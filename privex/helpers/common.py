@@ -47,7 +47,7 @@ import sys
 from collections import namedtuple
 from decimal import Decimal, getcontext
 from os import getenv as env
-from typing import Sequence, List, Union, Tuple, Type, Dict
+from typing import Sequence, List, Union, Tuple, Type, Dict, TypeVar, Any
 
 log = logging.getLogger(__name__)
 
@@ -121,6 +121,53 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
         if hasattr(v, '__len__') and len(v) == 0: return True
 
     return False
+
+
+T = TypeVar('T')
+K = TypeVar('K')
+V = TypeVar('V')
+
+USE_ORIG_VAR = type('UseOrigVar', (), {})
+
+
+def empty_if(v: V, is_empty: K = None, not_empty: T = USE_ORIG_VAR, **kwargs) -> Union[T, K, V]:
+    """
+    Syntactic sugar for ``x if empty(y) else z``. If ``not_empty`` isn't specified, then the original value ``v``
+    will be returned if it's not empty.
+    
+    **Example 1**::
+    
+        >>> def some_func(name=None):
+        ...     name = empty_if(name, 'John Doe')
+        ...     return name
+        >>> some_func("")
+        John Doe
+        >>> some_func("Dave")
+        Dave
+    
+    **Example 2**::
+    
+        >>> empty_if(None, 'is empty', 'is not empty')
+        is empty
+        >>> empty_if(12345, 'is empty', 'is not empty')
+        is not empty
+    
+    
+    :param Any v:     The value to test for emptiness
+    :param is_empty:  The value to return if ``v`` is empty (defaults to ``None``)
+    :param not_empty: The value to return if ``v`` is not empty (defaults to the original value ``v``)
+    :param kwargs:    Any additional kwargs to pass to :func:`.empty`
+    
+    :key zero: if ``zero=True``, then v is empty if it's int ``0`` or str ``'0'``
+    :key itr:  if ``itr=True``,  then v is empty if it's ``[]``, ``{}``, or is an iterable and has 0 length
+    
+    :return V orig_var:  The original value ``v`` is returned if ``not_empty`` isn't specified.
+    :return K is_empty:  The value specified as ``is_empty`` is returned if ``v`` is empty
+    :return T not_empty: The value specified as ``not_empty`` is returned if ``v`` is not empty
+                         (and not_empty was specified)
+    """
+    not_empty = v if not_empty == USE_ORIG_VAR else not_empty
+    return is_empty if empty(v, **kwargs) else not_empty
 
 
 def is_true(v) -> bool:
