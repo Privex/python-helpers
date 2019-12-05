@@ -43,7 +43,7 @@ import json
 from typing import Union
 from collections import namedtuple, OrderedDict
 from privex.helpers import dictable_namedtuple, is_namedtuple, subclass_dictable_namedtuple, \
-    convert_dictable_namedtuple, DictObject
+    convert_dictable_namedtuple, DictObject, OrderedDictObject
 from tests.base import PrivexBaseCase
 import logging
 
@@ -98,7 +98,57 @@ class TestDictObject(PrivexBaseCase):
         self.assertEqual(x['other_test'], 'example')
         self.assertEqual(x.testing, 'testattr')
         self.assertEqual(x.other_test, 'example')
+
+
+class TestOrderedDictObject(PrivexBaseCase):
+    def test_convert_from_dict(self):
+        """Test converting a :class:`dict` into a :class:`.DictObject`"""
+        x = dict(hello='world', example='testing')
+        y = OrderedDictObject(x)
+        self.assertEqual(x, y)
+        self.assertEqual(y['hello'], 'world')
+        self.assertEqual(y['example'], 'testing')
+        self.assertEqual(y.hello, 'world')
+        self.assertEqual(y.example, 'testing')
     
+    def test_convert_to_dict(self):
+        """Test converting a :class:`.OrderedDictObject` into a :class:`dict`"""
+        x = OrderedDictObject(hello='world', example='testing')
+        y = dict(x)
+        self.assertEqual(x, y)
+        self.assertEqual(y['hello'], 'world')
+        self.assertEqual(y['example'], 'testing')
+    
+    def test_json_dumps(self):
+        """Test serializing a simple :class:`.OrderedDictObject` into JSON"""
+        x = OrderedDictObject(hello='world', example='testing')
+        j = json.dumps(x)
+        self.assertEqual(j, '{"hello": "world", "example": "testing"}')
+    
+    def test_json_dumps_nested(self):
+        """Test serializing a :class:`.OrderedDictObject` with a nested :class:`.OrderedDictObject` into JSON"""
+        x = OrderedDictObject(hello='world', example='testing')
+        x.layer = OrderedDictObject(test=True)
+        j = json.dumps(x)
+        self.assertEqual(j, '{"hello": "world", "example": "testing", "layer": {"test": true}}')
+    
+    def test_set_item(self):
+        """Test setting a dictionary key via an item/key ``x['y'] = 123``"""
+        x = OrderedDictObject()
+        x['testing'] = 'testitem'
+        self.assertEqual(x['testing'], 'testitem')
+        self.assertEqual(x.testing, 'testitem')
+    
+    def test_set_attr(self):
+        """Test setting a dictionary key via an attribute ``x.y = 123``"""
+        x = OrderedDictObject()
+        x.testing = 'testattr'
+        x.other_test = 'example'
+        self.assertEqual(x['testing'], 'testattr')
+        self.assertEqual(x['other_test'], 'example')
+        self.assertEqual(x.testing, 'testattr')
+        self.assertEqual(x.other_test, 'example')
+
 
 class TestIsNamedTuple(PrivexBaseCase):
     """

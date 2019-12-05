@@ -35,7 +35,7 @@ from decimal import Decimal, getcontext
 from os import getenv as env
 from typing import Sequence, List, Union, Tuple, Type, Dict, TypeVar, Any, Iterable, Callable, NewType, Optional
 
-from privex.helpers.collections import DictObject
+from privex.helpers.collections import DictObject, OrderedDictObject
 
 log = logging.getLogger(__name__)
 
@@ -788,7 +788,7 @@ def get_function_params(obj: Union[type, callable], check_parents=False, **kwarg
     _cls_keys = inspect.signature(obj).parameters
     cls_keys = _filter_params(inspect.signature(obj).parameters, **filter_opts)
     if check_parents and hasattr(obj, '__base__') and inspect.isclass(obj):
-        ret = DictObject({obj: cls_keys})
+        ret = OrderedDictObject({obj: cls_keys})
         last_parent = obj.__base__
         while last_parent not in [None, type, object]:
             try:
@@ -805,7 +805,7 @@ def get_function_params(obj: Union[type, callable], check_parents=False, **kwarg
                 continue
         
         if merge:
-            merged = DictObject()
+            merged = OrderedDictObject()
             for cls in reversed(ret):
                 for k, p in ret[cls].items():
                     merged[k] = p
@@ -813,7 +813,7 @@ def get_function_params(obj: Union[type, callable], check_parents=False, **kwarg
             
         return ret
     
-    return DictObject(cls_keys)
+    return OrderedDictObject(cls_keys)
 
 
 def construct_dict(cls: Union[Type[T], C], kwargs: dict, args: Iterable = None, check_parents=True) -> Union[T, Any]:

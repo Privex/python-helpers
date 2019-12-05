@@ -191,7 +191,7 @@ with ``dictable_namedtuple``)
 """
 import inspect
 import sys
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from typing import Dict, Optional, NamedTuple, Union, Type
 import logging
 
@@ -229,6 +229,25 @@ class DictObject(dict):
         >>> x
         {'hello': 'replaced', 'example': 123}
 
+    """
+
+    def __getattr__(self, item):
+        """When an attribute is requested, e.g. ``x.something``, forward it to ``dict['something']``"""
+        if hasattr(super(), item):
+            return super().__getattribute__(item)
+        return super().__getitem__(item)
+
+    def __setattr__(self, key, value):
+        """When an attribute is set, e.g. ``x.something = 'abcd'``, forward it to ``dict['something'] = 'abcd'``"""
+        if hasattr(super(), key):
+            return super().__setattr__(key, value)
+        return super().__setitem__(key, value)
+    
+
+class OrderedDictObject(OrderedDict):
+    """
+    Ordered version of :class:`.DictObject` - dictionary with attribute access.
+    See :class:`.DictObject`
     """
     def __getattr__(self, item):
         """When an attribute is requested, e.g. ``x.something``, forward it to ``dict['something']``"""
