@@ -70,19 +70,17 @@ try:
     plugin.HAS_REDIS = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "RedisCache", not loading RedisCache')
-    pass
+
 try:
     from privex.helpers.asyncx import async_sync, run_sync
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "asyncx", not loading async helpers')
-    pass
 
 try:
     from privex.helpers.crypto import Format, KeyManager, EncryptHelper, auto_b64decode, is_base64
     plugin.HAS_CRYPTO = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "crypto", not loading cryptography helpers')
-    pass
 
 try:
     from privex.helpers.setuppy.common import extras_require, reqs
@@ -107,6 +105,11 @@ try:
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "extras", cannot load any extras.* modules...')
 
+try:
+    from privex.helpers.converters import *
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "converter", cannot load any converter.* modules...')
+
 
 def _setup_logging(level=logging.WARNING):
     """
@@ -128,7 +131,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.4.1'
+VERSION = '2.5.0'
 
 
 

@@ -13,6 +13,7 @@ Unit Test List / Overview
     tests.test_bool
     tests.test_cache
     tests.test_collections
+    tests.test_converters
     tests.test_crypto
     tests.test_extras
     tests.test_general

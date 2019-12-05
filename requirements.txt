@@ -1,5 +1,6 @@
 # core requirement
 privex-loghelper
+python-dateutil
 
 # Extra [cache] - file: extras/cache.txt
 redis>=3.3

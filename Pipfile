@@ -26,6 +26,7 @@ dnspython = ">=1.16"
 Django = "*"
 MarkupSafe = ">=1.1.1"
 wheel = "*"
+python-dateutil = "*"
 
 [requires]
 python_version = "3.8"

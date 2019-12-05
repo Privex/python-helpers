@@ -9,6 +9,7 @@ Common functions and classes that don't fit into a specific category
         +===================================================+
         |                                                   |
         |        Originally Developed by Privex Inc.        |
+        |        License: X11 / MIT                         |
         |                                                   |
         |        Core Developer(s):                         |
         |                                                   |
@@ -19,35 +20,22 @@ Common functions and classes that don't fit into a specific category
 
     Copyright 2019     Privex Inc.   ( https://www.privex.io )
 
-    Permission is hereby granted, free of charge, to any person obtaining a copy of 
-    this software and associated documentation files (the "Software"), to deal in 
-    the Software without restriction, including without limitation the rights to use, 
-    copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
-    Software, and to permit persons to whom the Software is furnished to do so, 
-    subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in all 
-    copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
-    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
-    PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
-    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
-    OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
-    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 """
 import inspect
 import math
 import random
+import re
 import string
 import argparse
 import logging
 import sys
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
+from datetime import datetime
 from decimal import Decimal, getcontext
 from os import getenv as env
-from typing import Sequence, List, Union, Tuple, Type, Dict, TypeVar, Any
+from typing import Sequence, List, Union, Tuple, Type, Dict, TypeVar, Any, Iterable, Callable, NewType, Optional
+
+from privex.helpers.collections import DictObject
 
 log = logging.getLogger(__name__)
 
@@ -57,8 +45,20 @@ SAFE_CHARS = 'abcdefhkmnprstwxyz23456789ACDEFGHJKLMNPRSTWXYZ'
 ALPHANUM = string.ascii_uppercase + string.digits + string.ascii_lowercase
 """All characters from a-z, A-Z, and 0-9 - for random strings where there's no risk of user font confusion"""
 
+T = TypeVar('T')
+"""Plain generic type variable for use in helper functions"""
+K = TypeVar('K')
+"""Plain generic type variable for use in helper functions"""
+V = TypeVar('V')
+"""Plain generic type variable for use in helper functions"""
 
-def random_str(size:int = 50, chars: Sequence = SAFE_CHARS) -> str:
+C = TypeVar('C', type, callable, Callable)
+"""Generic type variable constrained to :class:`type` / :class:`typing.Callable` for use in helper functions"""
+CL = TypeVar('CL', type, callable, Callable)
+"""Generic type variable constrained to :class:`type` / :class:`typing.Callable` for use in helper functions"""
+
+
+def random_str(size: int = 50, chars: Sequence = SAFE_CHARS) -> str:
     """
     Generate a random string of arbitrary length using a given character set (string / list / tuple). Uses Python's 
     SystemRandom class to provide relatively secure randomness from the OS. (On Linux, uses /dev/urandom)
@@ -123,11 +123,14 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
     return False
 
 
-T = TypeVar('T')
-K = TypeVar('K')
-V = TypeVar('V')
-
 USE_ORIG_VAR = type('UseOrigVar', (), {})
+"""
+A simple functionless type, used purely as a default parameter value meaning "fallback to the value from a certain
+other parameter".
+
+Primarily used in :func:`.empty_if` but can be used by any function/method, including use outside of privex-helpers.
+
+"""
 
 
 def empty_if(v: V, is_empty: K = None, not_empty: T = USE_ORIG_VAR, **kwargs) -> Union[T, K, V]:
@@ -564,4 +567,342 @@ def human_name(class_name: Union[str, bytes, callable, Type[object]]) -> str:
                 new_name[pos + 1] = new_name[pos + 1].upper()
     
     return ''.join(new_name).strip()
+
+
+IS_XARGS = re.compile('^\*([a-zA-Z0-9_])+$')
+"""Pre-compiled regex for matching catch-all positional argument parameter names like ``*args``"""
+IS_XKWARGS = re.compile('^\*\*([a-zA-Z0-9_])+$')
+"""Pre-compiled regex for matching catch-all keyword argument parameter names like ``**args``"""
+T_PARAM = inspect.Parameter
+"""Type alias for :class:`inspect.Parameter`"""
+T_PARAM_LIST = Union[Dict[str, T_PARAM], List[T_PARAM], Iterable[T_PARAM]]
+"""
+Type alias for dict's containing strings mapped to :class:`inspect.Parameter`'s, lists of just
+:class:`inspect.Parameter`'s, and any iterable of :class:`inspect.Parameter`
+"""
+
+# noinspection PyProtectedMember
+INS_EMPTY = inspect._empty
+"""
+Type alias for :class:`inspect.empty`
+"""
+
+
+def _filter_params(params: T_PARAM_LIST, ignore_xargs=False, ignore_xkwargs=False, **kwargs) -> Dict[str, T_PARAM]:
+    """
+    Filter an iterable containing :class:`inspect.Parameter`'s, returning a :class:`.DictObject` containing
+    parameter names mapped to their :class:`inspect.Parameter` object.
+    
+    **Examples**
+    
+    Function ``some_func`` is used as an example.
+    
+        >>> import inspect
+        >>> def some_func(x, y, z=123, *args, **kwargs):
+        ...     pass
+        >>> params = inspect.signature(some_func).parameters
+    
+    With just parameters, no filtering is done. Only scanning the parameters and returning them as a dict::
+    
+        >>> _filter_params(params)
+        {'x': <Parameter "x">, 'y': <Parameter "y">, 'z': <Parameter "z=123">,
+         '*args': <Parameter "*args">, '**kwargs': <Parameter "**kwargs">}
+    
+    With the arguments ``ignore_xargs=True`` and ``ignore_xkwargs=True``, this strips away any catch-all parameters
+    e.g. ``*args`` / ``**kwargs``. Example::
+    
+        >>> _filter_params(params, ignore_xargs=True, ignore_xkwargs=True)
+        {'x': <Parameter "x">, 'y': <Parameter "y">, 'z': <Parameter "z=123">}
+    
+    With the arguments ``ignore_defaults=True`` and ``ignore_positional=True``, this strips away all normal positional
+    and keyword parameters - leaving only catch-all parameters for positional/keyword arguments. Example::
+    
+        >>> _filter_params(params, ignore_defaults=True, ignore_positional=True)
+        {'*args': <Parameter "*args">, '**kwargs': <Parameter "**kwargs">}
+    
+    
+    :param params: An iterable of :class:`inspect.Parameter`'s, e.g. from ``inspect.signature(func).parameters``
+    :param bool ignore_xargs: Filter out any catch-all positional arguments (e.g. ``*args``)
+    :param bool ignore_xkwargs: Filter out any catch-all keyword arguments (e.g. ``**kwargs``)
+    
+    :key bool ignore_defaults: Filter out any parameter which has a default value (e.g. args usable as kwargs)
+    :key bool ignore_positional: Filter out any parameter which doesn't have a default value (mandatory args)
+    
+    :return DictObject filtered: A dictionary of filtered params, mapping param names to Parameter objects.
+    """
+    ignore_defaults = kwargs.pop('ignore_defaults', False)
+    ignore_positional = kwargs.pop('ignore_positional', False)
+    
+
+    
+    _params = params
+    if isinstance(params, (dict, OrderedDict)) or hasattr(params, 'values'):
+        _params = params.values()
+    
+    _is_xargs = lambda param: IS_XARGS.search(str(param)) is not None
+    _is_xkwargs = lambda param: IS_XKWARGS.search(str(param)) is not None
+    _is_x_arg = lambda param: _is_xargs(param) or _is_xkwargs(param)
+    _def_empty = lambda param: empty(param.default) or param.default is INS_EMPTY
+    
+    filtered = DictObject()
+    for p in _params:   # type: inspect.Parameter
+        if ignore_xargs and _is_xargs(p): continue
+        if ignore_xkwargs and _is_xkwargs(p): continue
+        # x-args (*args / **kwargs) cannot count as defaults / positionals and shouldn't be counted in this IGNORE.
+        if ignore_defaults and not _def_empty(p) and not _is_x_arg(p): continue
+        if ignore_positional and _def_empty(p) and not _is_x_arg(p): continue
+        param_name = str(p) if '=' not in str(p) else p.name
+        filtered[param_name] = p
+    
+    return filtered
+
+
+T_PARAM_DICT = Union[
+    Dict[str, T_PARAM],
+    DictObject,
+    Dict[type, Dict[str, T_PARAM]]
+]
+"""
+Type alias for dict's mapping parameter names to :class:`inspect.Parameter`'s, :class:`.DictObject`'s,
+and dict's mapping classes to dict's mapping parameter names to :class:`inspect.Parameter`'s.
+"""
+
+
+def get_function_params(obj: Union[type, callable], check_parents=False, **kwargs) -> T_PARAM_DICT:
+    """
+    Extracts a function/method's signature (or class constructor signature if a class is passed), and returns
+    it as a dictionary.
+    
+    Primarily used by :func:`.construct_dict` - but may be useful for other purposes.
+    
+    If you've passed a class, you can set ``check_parents`` to ``True`` to obtain the signatures of the passed
+    class's constructor AND all of it's parent classes, returned as a dictionary mapping classes to dictionaries
+    of parameters.
+    
+    If you've set ``check_parents`` to ``True``, but you want the parameters to be a flat dictionary (just like when
+    passing a function or class without check_parents), you can also pass ``merge=True``, which merges each class's
+    constructor parameters into a dictionary mapping names to :class:`inspect.Parameter` objects.
+    
+    If any parameters conflict, children's constructor parameters always take precedence over their parent's version,
+    much in the same way that Python's inheritance works.
+    
+    **Basic (with functions)**::
+
+        
+        >>> def some_func(x, y, z=123, *args, **kwargs):
+        ...    pass
+    
+    Get all normal parameters (positional and kwargs - excluding catch-all ``*args`` / ``**kwargs`` parameter types)::
+    
+        >>> params = get_function_params(some_func)
+        >>> params
+        {'x': <Parameter "x">, 'y': <Parameter "y">, 'z': <Parameter "z=123">}
+    
+    Get raw parameter name and value (as written in signature) / access default values::
+        
+        >>> str(params.z.name)     # You can also access it via params['z']
+        'z=123'
+        >>> params.z.default  # You can also access it via params['z']
+        123
+
+    Get only **required** parameters::
+        
+        >>> get_function_params(some_func, ignore_defaults=True)
+        {'x': <Parameter "x">, 'y': <Parameter "y">}
+    
+    Get only parameters with defaults::
+    
+        >>> get_function_params(some_func, ignore_positional=True)
+        {'z': <Parameter "z=123">}
+    
+    
+    **Example Usage (with classes and sub-classes)**::
+    
+        >>> class BaseClass:
+        ...     def __init__(self, a, b, c=1234, **kwargs):
+        ...         pass
+        
+        >>> class Example(BaseClass):
+        ...     def __init__(self, d, e='hello', f=None, a='overridden', **kwargs):
+        ...         super().__init__(a=a, d=d, e=e, f=f, **kwargs)
+    
+    If we pass the class ``Example`` on it's own, we get a dictionary of just it's own parameters::
+    
+        >>> get_function_params(Example)
+        {'d': <Parameter "d">, 'e': <Parameter "e='hello'">, 'f': <Parameter "f=None">}
+    
+    However, if we set ``check_parents=True``, we now get a dictionary containing ``Example``'s constructor parameters,
+    AND ``BaseClass``'s (it's parent class) constructor parameters, organised by class::
+        
+        >>> get_function_params(Example, True)
+        {
+            <class '__main__.Example'>: {
+                'd': <Parameter "d">, 'e': <Parameter "e='hello'">, 'f': <Parameter "f=None">,
+                'a': <Parameter "a='overridden'">
+            },
+            <class '__main__.BaseClass'>: {'a': <Parameter "a">, 'b': <Parameter "b">, 'c': <Parameter "c=1234">}
+        }
+    
+    We can also add the optional kwarg ``merge=True``, which merges the parameters of the originally passed class,
+    and it's parents.
+    
+    This is done in reverse order, so that children's conflicting constructor parameters take priority over their
+    parents, as can be seen below with ``a`` which is shown as ``a='overridden'`` - the overridden parameter
+    of the class ``Example`` with a default value, instead of the parent's ``a`` which makes ``a`` mandatory::
+     
+        >>> get_function_params(Example, True, merge=True)
+        {
+            'a': <Parameter "a='overridden'">, 'b': <Parameter "b">, 'c': <Parameter "c=1234">,
+            'd': <Parameter "d">, 'e': <Parameter "e='hello'">, 'f': <Parameter "f=None">
+        }
+    
+    
+    :param type|callable obj: A class (not an instance) or callable (function / lambda) to extract and filter the
+                              parameter's from. If a class is passed, the parameters of the constructor will be
+                              returned (``__init__``), excluding the initial ``self`` parameter.
+    
+    :param bool check_parents: (Default: ``False``) If ``obj`` is a class and this is True, will recursively grab
+        the constructor parameters for all parent classes, and return the parameters as a dictionary of
+        ``{<class X>: {'a': <Parameter 'a'>}, <class Y>: {'b': <Parameter 'b'>}``, unless ``merge`` is also set
+        to ``True``.
+    
+    :key bool ignore_xargs: (Default: ``True``) Filter out any catch-all positional arguments (e.g. ``*args``)
+    :key bool ignore_xkwargs: (Default: ``True``) Filter out any catch-all keyword arguments (e.g. ``**kwargs``)
+    
+    :key bool ignore_defaults: (Default: ``False``) Filter out any parameter which has a default
+                               value (e.g. args usable as kwargs)
+    
+    :key bool ignore_positional: (Default: ``False``) Filter out any parameter which doesn't have a default
+                                 value (mandatory args)
+    
+    :key bool merge: (Default: ``False``) If this is True, when ``check_parents`` is enabled, all parameters will
+                     be flatted into a singular dictionary, e.g. ``{'a': <Parameter 'a'>, 'b': <Parameter "b">}``
+    
+    :return:
+    """
+    merge = kwargs.pop('merge', False)
+    filter_opts = dict(**kwargs)
+    filter_opts['ignore_xargs'] = filter_opts.get('ignore_xargs', True)
+    filter_opts['ignore_xkwargs'] = filter_opts.get('ignore_xkwargs', True)
+    
+    _cls_keys = inspect.signature(obj).parameters
+    cls_keys = _filter_params(inspect.signature(obj).parameters, **filter_opts)
+    if check_parents and hasattr(obj, '__base__') and inspect.isclass(obj):
+        ret = DictObject({obj: cls_keys})
+        last_parent = obj.__base__
+        while last_parent not in [None, type, object]:
+            try:
+                ret[last_parent] = _filter_params(
+                    inspect.signature(last_parent).parameters, **filter_opts
+                )
+                if not hasattr(last_parent, '__base__'):
+                    last_parent = None
+                    continue
+                last_parent = last_parent.__base__
+            except (Exception, BaseException) as e:
+                log.warning("Finishing check_parents loop due to exception: %s - %s", type(e), str(e))
+                last_parent = None
+                continue
+        
+        if merge:
+            merged = DictObject()
+            for cls in reversed(ret):
+                for k, p in ret[cls].items():
+                    merged[k] = p
+            return merged
+            
+        return ret
+    
+    return DictObject(cls_keys)
+
+
+def construct_dict(cls: Union[Type[T], C], kwargs: dict, args: Iterable = None, check_parents=True) -> Union[T, Any]:
+    """
+    Removes keys from the passed dict ``data`` which don't exist on ``cls`` (thus would get rejected as kwargs)
+    using :func:`.get_function_params`. Then create and return an instance of ``cls``, passing the filtered
+    ``kwargs`` dictionary as keyword args.
+
+    Ensures that any keys in your dictionary which don't exist on ``cls`` are automatically filtered out, instead
+    of causing an error due to unexpected keyword arguments.
+
+    **Example - User class which only takes specific arguments**
+    
+    First let's define a class which only takes three arguments in it's constructor - username, first_name, last_name.
+
+        >>> class User:
+        ...    def __init__(self, username, first_name=None, last_name=None):
+        ...        self.username = username
+        ...        self.first_name, self.last_name = first_name, last_name
+        ...
+    
+    Now we'll create a dictionary which has those three arguments, but also the excess ``address`` and ``phone``.
+    
+        >>> data = dict(username='johndoe123', first_name='John', last_name='Doe',
+        ...             address='123 Example St', phone='+1-123-000-1234')
+    
+    If we tried to directly pass data as keyword args, we'd get an error::
+     
+        >>> john = User(**data)
+        TypeError: __init__() got an unexpected keyword argument 'address'
+    
+    But by using :func:`.construct_dict`, we're able to construct a ``User``, as this helper function detects that
+    the excess ``address`` and ``phone`` are not valid parameters for ``User``'s constructor.
+     
+        >>> from privex.helpers import construct_dict
+        >>> john = construct_dict(User, data)
+        >>> print(john.username, john.first_name, john.last_name)
+        johndoe123 John Doe
+    
+    **Example - A function/method which only takes specific arguments**
+    
+    Not only can :func:`.construct_dict` be used for classes, but it can also be used for any function/method.
+    
+    Here's an example using a simple "factory function" which creates user objects::
+    
+        >>> def create_user(username, first_name=None, last_name=None):
+        ...     return User(username, first_name, last_name)
+        >>>
+        >>> data = dict(
+        ...     username='johndoe123', first_name='John', last_name='Doe',
+        ...     address='123 Example St', phone='+1-123-000-1234'
+        ... )
+        >>> # We can't just pass data as kwargs due to the extra keys.
+        >>> create_user(**data)
+        TypeError: create_user() got an unexpected keyword argument 'address'
+        >>> # But we can call the function using construct_dict, which filters out the excess dict keys :)
+        >>> john = construct_dict(create_user, data)
+        >>> print(john.username, john.first_name, john.last_name)
+        johndoe123 John Doe
+    
+    
+    :param Type[T]|callable cls: A class (not an instance) or callable (function / lambda) to extract and filter the
+                                 parameter's from, then call using filtered ``kwargs`` and ``args``.
+    
+    :param dict kwargs: A dictionary containing keyword arguments to filter and use to call / construct ``cls``.
+    
+    :param list|set args: A list of positional arguments (NOT FILTERED!) to pass when calling/constructing ``cls``.
+    
+    :param bool check_parents: (Default: ``True``) If ``obj`` is a class and this is True, will recursively grab
+                               the constructor parameters for all parent classes of ``cls`` and merge them into the
+                               returned dict.
+    :return Any func_result:   If ``cls`` was a function/method, the return result will be the returned data/object
+                               from the function passed.
+    
+    :return T cls_instance:    If ``cls`` was a class, then the return result will be an instance of the class.
+    
+    """
+    args = empty_if(args, [])
+    if hasattr(cls, '__attrs_attrs__'):
+        # If the passed object has the attribute __attrs_attrs__, then this means that it's an ``attr.s`` class, so
+        # we should just extract the attributes from __attrs_attrs__.
+        cls_keys = [atr.name for atr in cls.__attrs_attrs__]
+    else:
+        # Otherwise, extract the function / class's expected parameter names using our helper get_function_params().
+        cls_keys = get_function_params(cls, check_parents=check_parents, merge=True)
+        cls_keys = cls_keys.keys()
+
+    clean_data = {x: y for x, y in kwargs.items() if x in cls_keys}
+    return cls(*args, **clean_data)
+
+
 

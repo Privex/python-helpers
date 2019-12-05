@@ -9,6 +9,13 @@ tests.test\_general
    
    
    
+   .. rubric:: Functions
+
+   .. autosummary::
+      :toctree: test_general
+   
+      some_func
+   
    
 
    
@@ -18,7 +25,12 @@ tests.test\_general
    .. autosummary::
       :toctree: test_general
    
+      BaseOne
+      BaseTwo
+      InheritExample
+      SimpleExample
       TestGeneral
+      TestInspectFunctions
       TestMocker
    
    

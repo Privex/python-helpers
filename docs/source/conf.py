@@ -191,5 +191,6 @@ intersphinx_mapping = {
     'cryptography': ('https://cryptography.io/en/latest/', None),
     'django': ('http://django.readthedocs.org/en/latest/', None),
     'semver': ('https://python-semver.readthedocs.io/en/latest/', None),
+    'dateutil': ('https://dateutil.readthedocs.io/en/latest/', None),
 }
 

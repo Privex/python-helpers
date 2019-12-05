@@ -1,3 +1,29 @@
+"""
+Functions/classes which depend on the package ``attrs`` (`Attrs.org`_)
+
+.. _Attrs.org: https://www.attrs.org/en/stable/
+
+**Copyright**::
+
+        +===================================================+
+        |                 © 2019 Privex Inc.                |
+        |               https://www.privex.io               |
+        +===================================================+
+        |                                                   |
+        |        Originally Developed by Privex Inc.        |
+        |        License: X11 / MIT                         |
+        |                                                   |
+        |        Core Developer(s):                         |
+        |                                                   |
+        |          (+)  Chris (@someguy123) [Privex]        |
+        |          (+)  Kale (@kryogenic) [Privex]          |
+        |                                                   |
+        +===================================================+
+
+    Copyright 2019     Privex Inc.   ( https://www.privex.io )
+
+
+"""
 import attr
 
 __all__ = [
