@@ -29,6 +29,7 @@ tests.test\_general
       BaseTwo
       InheritExample
       SimpleExample
+      TestAsyncX
       TestGeneral
       TestInspectFunctions
       TestMocker

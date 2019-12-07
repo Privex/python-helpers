@@ -4,7 +4,7 @@ TestMocker
 .. currentmodule:: tests.test_general
 
 .. autoclass:: TestMocker
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

@@ -38,9 +38,14 @@ Test cases for :py:mod:`privex.helpers.extras`
 
 
 """
+import shutil
+import tempfile
+from os.path import join
+from typing import Optional
+
 import pytest
 import logging
-from privex.helpers import extras
+from privex.helpers import extras, empty_if, run_sync
 from tests.base import PrivexBaseCase
 
 log = logging.getLogger(__name__)
@@ -52,8 +57,9 @@ attr, AttribDictable, Example = object, object, object
 # We also create the `Example` class for use in test cases.
 if extras.HAS_ATTRS:
     import attr
-    from privex.helpers.extras import AttribDictable
-    
+    from privex.helpers.extras import AttribDictable, Git
+
+
     @attr.s
     class Example(AttribDictable):
         hello = attr.ib(type=str)
@@ -83,5 +89,138 @@ class TestAttrs(PrivexBaseCase):
         d = dict(x)
         self.assertIsInstance(d, dict)
         self.assertEqual(d, dict(hello='world', testing=True))
+
+
+class TestGit(PrivexBaseCase):
+    git: Optional[Git]
+    
+    def setUp(self) -> None:
+        self.temp_repo1 = tempfile.mkdtemp()
+        self.git = Git(repo=self.temp_repo1)
+        self._create_test_file('testfile')
+        self._create_test_file('testfile2')
+        self._create_test_file('testfile3')
+    
+    def tearDown(self) -> None:
+        shutil.rmtree(self.temp_repo1)
+        self.git = None
+        self.temp_repo1 = None
+
+    # noinspection PyUnresolvedReferences
+    async def _commit_async(self):
+        await self.git.init()
+        await self.git.add("testfile")
+        await self.git.commit("added testfile")
+        _git_log = await self.git.log()
+        return _git_log.split('\n')
+
+    # noinspection PyUnresolvedReferences
+    async def _checkout_async(self, b, new=False):
+        return await self.git.checkout(b, new=new)
+    
+    def _create_test_file(self, filename, folder=None):
+        fpath = join(empty_if(folder, self.temp_repo1), filename)
+        with open(fpath, 'w') as fp:
+            fp.write("hello world")
+        return fpath
+    
+    def test_init(self):
+        res = self.git.init()
+        self.assertIn("Initialized empty Git repository", res)
+
+    def test_init_async(self):
+        async def _test_init():
+            return await self.git.init()
+
+        self.assertIn("Initialized empty Git repository", run_sync(_test_init))
+
+    def test_add(self):
+        self.git.init()
+        self.git.add("testfile")
+        status = self.git.status()
+        
+        found = False
+        for s in status.split('\n'):
+            s_status, s_file = s[0:2], s[2:].strip()
+            # log.info("s_status: '%s'   s_file: '%s'", s_status, s_file)
+            if s_status == "A " and s_file == "testfile":
+                found = True
+        
+        self.assertTrue(found)
+
+    def test_add_async(self):
+        async def _add_async(g):
+            await g.init()
+            await g.add("testfile")
+            return await g.status()
+        status = run_sync(_add_async, self.git)
+        found = False
+        for s in status.split('\n'):
+            s_status, s_file = s[0:2], s[2:].strip()
+            # log.info("s_status: '%s'   s_file: '%s'", s_status, s_file)
+            if s_status == "A " and s_file == "testfile":
+                found = True
+        self.assertTrue(found)
+
+    def test_commit(self):
+        self.git.init()
+        self.git.add("testfile")
+        comm = self.git.commit("added testfile")
+        git_log = self.git.log().split('\n')
+        self.assertIn("added testfile", git_log[0])
+
+    def test_commit_async(self):
+        # async def _commit_async(g):
+        #     await g.init()
+        #     await g.add("testfile")
+        #     await g.commit("added testfile")
+        #     _git_log = await g.log()
+        #     return _git_log.split('\n')
+
+        git_log = run_sync(self._commit_async)
+        self.assertIn("added testfile", git_log[0])
+
+    def test_checkout(self):
+        self.git.init()
+        self.git.add("testfile")
+        self.git.commit("added testfile")
+        b = self.git.checkout("test", new=True)
+        self.assertIn("Switched to a new branch 'test'", b)
+        b = self.git.checkout("master")
+        self.assertIn("Switched to branch 'master'", b)
+
+    def test_checkout_async(self):
+        run_sync(self._commit_async)
+        b = run_sync(self._checkout_async, 'test', new=True)
+        self.assertIn("Switched to a new branch 'test'", b)
+        b = run_sync(self._checkout_async, 'master')
+        self.assertIn("Switched to branch 'master'", b)
+    
+    def test_get_current_commit(self):
+        git_log = run_sync(self._commit_async)
+        last_commit = git_log[0].split()[0]
+        current_commit = self.git.get_current_commit()
+        self.assertIn(last_commit, current_commit)
+
+    def test_get_current_branch(self):
+        run_sync(self._commit_async)
+        self.assertEqual(self.git.get_current_branch(), 'master')
+        run_sync(self._checkout_async, 'testing', new=True)
+        self.assertEqual(self.git.get_current_branch(), 'testing')
+        run_sync(self._checkout_async, 'master')
+        self.assertEqual(self.git.get_current_branch(), 'master')
+
+    def test_get_current_tag(self):
+        run_sync(self._commit_async)
+        self.git.tag('1.0.0')
+        self.assertEqual(self.git.get_current_tag(), '1.0.0')
+        # Checkout testing and make a new commit so we can confirm checking tags between branches works
+        self.git.checkout('testing', new=True)
+        self.git.add('testfile2')
+        self.git.commit('added testfile2')
+        self.git.tag('1.0.1')
+        self.assertEqual(self.git.get_current_tag(), '1.0.1')
+        self.assertEqual(self.git.get_current_tag('master'), '1.0.0')
+
 
 

@@ -1,6 +1,7 @@
 # core requirement
 privex-loghelper
 python-dateutil
+sniffio
 
 # Extra [cache] - file: extras/cache.txt
 redis>=3.3

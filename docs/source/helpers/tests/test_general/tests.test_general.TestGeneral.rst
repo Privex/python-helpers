@@ -4,7 +4,7 @@ TestGeneral
 .. currentmodule:: tests.test_general
 
 .. autoclass:: TestGeneral
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:
@@ -19,8 +19,10 @@ Methods
    :toctree: testgeneral
 
     ~TestGeneral.setUp
-    ~TestGeneral.test_async_decorator
-    ~TestGeneral.test_async_decorator_return
+    ~TestGeneral.test_call_sys_async_read
+    ~TestGeneral.test_call_sys_async_write
+    ~TestGeneral.test_call_sys_read
+    ~TestGeneral.test_call_sys_write
     ~TestGeneral.test_chunked
     ~TestGeneral.test_human_name_class
     ~TestGeneral.test_human_name_func
@@ -29,7 +31,6 @@ Methods
     ~TestGeneral.test_inject_items_2
     ~TestGeneral.test_retry_on_err
     ~TestGeneral.test_retry_on_err_return
-    ~TestGeneral.test_run_sync
 
 
 

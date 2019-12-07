@@ -18,7 +18,12 @@ try:
     __all__ += ['AttribDictable']
 except ImportError:
     log.debug('privex.helpers.extras __init__ failed to import "attrs", not loading attrs library helpers')
-    
 
+try:
+    from privex.helpers.extras.git import __all__ as _git_all
+    from privex.helpers.extras.git import *
+    __all__ += _git_all
+except ImportError:
+    log.debug('privex.helpers.extras __init__ failed to import "git", not loading Git helpers')
 
 

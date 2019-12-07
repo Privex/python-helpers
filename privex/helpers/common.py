@@ -455,25 +455,46 @@ def inject_items(items: list, dest_list: list, position: int) -> List[str]:
     return before + items + after
 
 
-def byteify(data: Union[str, bytes], encoding='utf-8') -> bytes:
+def byteify(data: Optional[Union[str, bytes]], encoding='utf-8', if_none=None) -> bytes:
     """
-    Convert a piece of data into bytes if it isn't already.
+    Convert a piece of data into bytes if it isn't already::
         
         >>> byteify("hello world")
         b"hello world"
     
+    By default, if ``data`` is ``None``, then a :class:`TypeError` will be raised by :func:`bytes`.
+    
+    If you'd rather convert ``None`` into a blank bytes string, use ``if_node=""``, like so::
+        
+        >>> byteify(None)
+        TypeError: encoding without a string argument
+        >>> byteify(None, if_none="")
+        b''
+    
     """
+    if data is None and if_none is not None:
+        return bytes(if_none, encoding) if type(if_none) is not bytes else if_none
     return bytes(data, encoding) if type(data) is not bytes else data
 
 
-def stringify(data: Union[str, bytes], encoding='utf-8') -> str:
+def stringify(data: Optional[Union[str, bytes]], encoding='utf-8', if_none=None) -> str:
     """
-    Convert a piece of data into a string (from bytes) if it isn't already.
+    Convert a piece of data into a string (from bytes) if it isn't already::
 
         >>> stringify(b"hello world")
         "hello world"
-
+    
+    By default, if ``data`` is ``None``, then ``None`` will be returned.
+    
+    If you'd rather convert ``None`` into a blank string, use ``if_node=""``, like so::
+        
+        >>> repr(stringify(None))
+        'None'
+        >>> stringify(None, if_none="")
+        ''
+    
     """
+    if data is None: return if_none
     return data.decode(encoding) if type(data) is bytes else data
 
 

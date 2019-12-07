@@ -108,3 +108,9 @@ class InvalidFormat(EncryptionError):
     """
 
 
+class SysCallError(PrivexException):
+    """
+    Raised when an error appears to have been returned after calling an external command
+    (e.g. via :class:`subprocess.Popen`)
+    """
+
