@@ -25,14 +25,17 @@ import inspect
 import math
 import random
 import re
+import shlex
 import string
 import argparse
 import logging
+import subprocess
 import sys
 from collections import namedtuple, OrderedDict
 from datetime import datetime
 from decimal import Decimal, getcontext
 from os import getenv as env
+from subprocess import PIPE, STDOUT
 from typing import Sequence, List, Union, Tuple, Type, Dict, TypeVar, Any, Iterable, Callable, NewType, Optional
 
 from privex.helpers.collections import DictObject, OrderedDictObject
@@ -567,6 +570,82 @@ def human_name(class_name: Union[str, bytes, callable, Type[object]]) -> str:
                 new_name[pos + 1] = new_name[pos + 1].upper()
     
     return ''.join(new_name).strip()
+
+
+STRBYTES = Union[bytes, str]
+"""Shorter alias for ``Union[bytes, str]``"""
+
+
+def shell_quote(*args: str) -> str:
+    """
+    Takes command line arguments as positional args, and properly quotes each argument to make it safe to
+    pass on the command line. Outputs a string containing all passed arguments properly quoted.
+    
+    Uses :func:`shlex.join` on Python 3.8+, and a for loop of :func:`shlex.quote` on older versions.
+    
+    Example::
+    
+        >>> print(shell_quote('echo', '"orange"'))
+        echo '"orange"'
+    
+    
+    """
+    return shlex.join(args) if hasattr(shlex, 'join') else " ".join([shlex.quote(a) for a in args]).strip()
+
+
+def call_sys(proc, *args, write: STRBYTES = None, **kwargs) -> Tuple[bytes, bytes]:
+    """
+    A small wrapper around :class:`subprocess.Popen` which allows executing processes, while optionally piping
+    data (``write``) into the process's stdin, then finally returning the process's output and error results.
+    Designed to be easier to use than using :class:`subprocess.Popen` directly.
+    
+    **Using AsyncIO?** - there's a native python asyncio version of this function available in :func:`.call_sys_async`,
+    which uses the native :func:`asyncio.subprocess.create_subprocess_shell`, avoiding blocking IO.
+    
+    By default, ``stdout`` and ``stdin`` are set to :attr:`subprocess.PIPE` while stderr defaults to
+    :attr:`subprocess.STDOUT`. You can override these by passing new values as keyword arguments.
+    
+    **NOTE:** The first positional argument is executed, and all other positional arguments are passed to the process
+    in the order specified. To use call_sys's arguments ``write``, ``stdout``, ``stderr`` and/or ``stdin``, you
+    **MUST** specify them as keyword arguments, otherwise they'll just be passed to the process you're executing.
+    
+    Any keyword arguments not specified in the ``:param`` or ``:key`` pydoc specifications will simply be forwarded to
+    the :class:`subprocess.Popen` constructor.
+    
+    **Simple Example**::
+        
+        >>> # All arguments are automatically quoted if required, so spaces are completely fine.
+        >>> folders, _ = call_sys('ls', '-la', '/tmp/spaces are fine/hello world')
+        >>> print(stringify(folders))
+        backups  cache   lib  local  lock  log  mail  opt  run  snap  spool  tmp
+    
+    **Piping data into a process**::
+    
+        >>> data = "hello world"
+        >>> # The data "hello world" will be piped into wc's stdin, and wc's stdout + stderr will be returned
+        >>> out, _ = call_sys('wc', '-c', write=data)
+        >>> int(out)
+        11
+    
+    
+    
+    :param str proc: The process to execute.
+    :param str args: Any arguments to pass to the process ``proc`` as positional arguments.
+    :param bytes|str write: If this is not ``None``, then this data will be piped into the process's STDIN.
+    
+    :key stdout: The subprocess file descriptor for stdout, e.g. :attr:`subprocess.PIPE` or :attr:`subprocess.STDOUT`
+    :key stderr: The subprocess file descriptor for stderr, e.g. :attr:`subprocess.PIPE` or :attr:`subprocess.STDOUT`
+    :key stdin: The subprocess file descriptor for stdin, e.g. :attr:`subprocess.PIPE` or :attr:`subprocess.STDIN`
+    :key cwd: Set the current/working directory of the process to this path, instead of the CWD of your calling script.
+    
+    :return tuple output: A tuple containing the process output of stdout and stderr
+    """
+    stdout, stderr, stdin = kwargs.pop('stdout', PIPE), kwargs.pop('stderr', STDOUT), kwargs.pop('stdin', PIPE)
+    args = [proc] + list(args)
+    handle = subprocess.Popen(args, stdout=stdout, stderr=stderr, stdin=stdin, **kwargs)
+    stdout, stderr = handle.communicate(input=byteify(write)) if write is not None else handle.communicate()
+    return stdout, stderr
+
 
 
 IS_XARGS = re.compile('^\*([a-zA-Z0-9_])+$')

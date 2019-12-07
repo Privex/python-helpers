@@ -39,6 +39,8 @@ General test cases for various un-categorized functions / classes e.g. :py:func:
 
 """
 import inspect
+from os import path, makedirs
+from tempfile import TemporaryDirectory, NamedTemporaryFile
 from typing import Union, Dict
 
 from privex import helpers
@@ -191,6 +193,44 @@ class TestGeneral(PrivexBaseCase):
         self.assertEqual(helpers.human_name(ExampleClass()), 'Example Class')
         self.assertEqual(helpers.human_name(_AnotherExample()), 'Another Example')
         self.assertEqual(helpers.human_name(Testing_class()), 'Testing Class')
+
+    def test_call_sys_read(self):
+        """Test reading output from call_sys by calling 'ls -l' on a temporary folder with spaces in it"""
+        with TemporaryDirectory() as td:
+            _temp_dir = 'path with/spaces in it'
+            temp_dir = path.join(td, 'path with', 'spaces in it')
+            makedirs(temp_dir)
+            with NamedTemporaryFile(dir=temp_dir) as tfile:
+                tfile.write(b'hello world')
+                out, err = helpers.call_sys('ls', '-l', _temp_dir, cwd=td)
+                out = helpers.stringify(out)
+                self.assertIn(path.basename(tfile.name), out)
+
+    def test_call_sys_write(self):
+        """Test piping data into a process with call_sys"""
+        out, err = helpers.call_sys('wc', '-c', write='hello world')
+        out = int(out)
+        self.assertEqual(out, 11)
+    
+    @helpers.async_sync
+    def test_call_sys_async_read(self):
+        """Test reading output from call_sys_async by calling 'ls -l' on a temporary folder with spaces in it"""
+        with TemporaryDirectory() as td:
+            _temp_dir = 'path with/spaces in it'
+            temp_dir = path.join(td, 'path with', 'spaces in it')
+            makedirs(temp_dir)
+            with NamedTemporaryFile(dir=temp_dir) as tfile:
+                tfile.write(b'hello world')
+                out, err = yield from helpers.call_sys_async('ls', '-l', _temp_dir, cwd=td)
+                out = helpers.stringify(out)
+                self.assertIn(path.basename(tfile.name), out)
+
+    @helpers.async_sync
+    def test_call_sys_async_write(self):
+        """Test piping data into a process with call_sys_async"""
+        out, err = yield from helpers.call_sys_async('wc', '-c', write='hello world')
+        out = int(out)
+        self.assertEqual(out, 11)
 
 
 Mocker = helpers.Mocker

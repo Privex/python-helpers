@@ -10,6 +10,7 @@ privex.helpers.asyncx
       :toctree: asyncx
    
       async_sync
+      call_sys_async
       run_sync
    
    

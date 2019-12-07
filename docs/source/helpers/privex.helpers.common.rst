@@ -9,6 +9,7 @@ privex.helpers.common
       :toctree: common
 
       byteify
+      call_sys
       chunked
       construct_dict
       dec_round
@@ -26,6 +27,7 @@ privex.helpers.common
       inject_items
       parse_csv
       parse_keyval
+      shell_quote
       stringify
       random_str
       _filter_params
