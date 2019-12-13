@@ -4,8 +4,7 @@ CacheAdapter
 .. currentmodule:: privex.helpers.cache.CacheAdapter
 
 .. autoclass:: CacheAdapter
-   :noindex:
-   
+
    .. automethod:: __init__
       :noindex:
 

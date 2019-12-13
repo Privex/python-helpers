@@ -6,6 +6,7 @@ verify_ssl = true
 [dev-packages]
 pytest = "*"
 pytest-cov = "*"
+pytest-asyncio = "*"
 coverage = "*"
 codecov = "*"
 twine = "*"
@@ -28,6 +29,10 @@ MarkupSafe = ">=1.1.1"
 wheel = "*"
 python-dateutil = "*"
 sniffio = "*"
+aioredis = "*"
+async-property = "*"
+aiomcache = "*"
+hiredis = "*"
 
 [requires]
 python_version = "3.8"

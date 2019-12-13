@@ -72,6 +72,11 @@ except ImportError:
     log.debug('privex.helpers __init__ failed to import "RedisCache", not loading RedisCache')
 
 try:
+    from privex.helpers.cache.asyncx import *
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "cache.asyncx.*", not loading async cache adapters')
+
+try:
     from privex.helpers.asyncx import async_sync, run_sync, call_sys_async, awaitable, aobject
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "asyncx", not loading async helpers')
@@ -131,7 +136,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.6.0'
+VERSION = '2.7.0'
 
 
 

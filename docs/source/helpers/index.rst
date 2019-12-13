@@ -3,6 +3,7 @@
     :toctree:
     
     privex.helpers.asyncx
+    privex.helpers.black_magic
     privex.helpers.cache
     privex.helpers.common
     privex.helpers.collections

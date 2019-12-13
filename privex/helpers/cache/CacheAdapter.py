@@ -1,8 +1,10 @@
+import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Coroutine, Awaitable
 
 from privex.helpers.exceptions import CacheNotFound
 from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
+from privex.helpers.types import VAL_FUNC_CORO
 
 
 class CacheAdapter(ABC):
@@ -133,6 +135,47 @@ class CacheAdapter(ABC):
             self.set(key=key, value=k, timeout=timeout)
         return k
 
+    async def get_or_set_async(self, key: str, value: VAL_FUNC_CORO, timeout: int = DEFAULT_CACHE_TIMEOUT) -> Any:
+        """
+        Async coroutine compatible version of :meth:`.get_or_set`.
+        
+        **Example with Async function**::
+        
+            >>> async def my_coro(key): return f"hello {key} world"
+            >>> c = CacheAdapter()
+            >>> await c.get_or_set_async('coro_example', my_coro)
+            'hello example world'
+            >>> c.get('coro_example')
+            'hello example world'
+        
+        **Also works with non-async functions**::
+            
+            >>> def my_func(key): return f"hello {key} world"
+            >>> await c.get_or_set_async('func_example', my_func)
+            'hello example world'
+            >>> c.get('func_example')
+            'hello example world'
+        
+        :param str key: The cache key (as a string) to get/set the value for, e.g. ``example:test``
+        :param Any value: The value to store in the cache key ``key``. Can be a standard type, a coroutine / awaitable,
+                          or a plain callable function.
+        :param int timeout: The amount of seconds to keep the data in cache. Pass ``None`` to disable expiration.
+        :return Any value: The value of the cache key ``key``, or ``value`` if it wasn't found.
+        """
+        key, timeout = str(key), int(timeout)
+        try:
+            k = self.get(key, fail=True)
+        except CacheNotFound:
+            k = value
+            if asyncio.iscoroutinefunction(value):
+                k = await value(key)
+            if asyncio.iscoroutine(value):
+                k = await value
+            elif callable(value):
+                k = value(key)
+            self.set(key=key, value=k, timeout=timeout)
+        return k
+
     def __getitem__(self, item):
         try:
             return self.get(key=item, fail=True)
@@ -141,3 +184,10 @@ class CacheAdapter(ABC):
 
     def __setitem__(self, key, value):
         return self.set(key=key, value=value)
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+

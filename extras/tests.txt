@@ -1,6 +1,7 @@
 # Unit testing
 pytest
 pytest-cov
+pytest-asyncio
 coverage
 codecov
 
