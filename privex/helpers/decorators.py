@@ -22,15 +22,15 @@ Class Method / Function decorators
 
 
 """
+import asyncio
 import functools
 import logging
 from enum import Enum
 from time import sleep
-from typing import Any, Union
+from typing import Any, Union, List
 
 from privex.helpers.cache import cached
-from privex.helpers.common import empty
-
+from privex.helpers.common import empty, is_true
 
 DEF_RETRY_MSG = "Exception while running '%s', will retry %d more times."
 DEF_FAIL_MSG = "Giving up after attempting to retry function '%s' %d times."
@@ -53,64 +53,270 @@ def retry_on_err(max_retries: int = 3, delay: Union[int, float] = 3, **retry_con
     If it still throws an exception after ``max_retries`` retries, it will log the exception details with ``fail_msg``,
     and then re-raise it.
 
-    Usage (retry up to 5 times, 1 second between retries, stop immediately if IOError is detected):
+    Usage (retry up to 5 times, 1 second between retries, stop immediately if IOError is detected)::
 
         >>> @retry_on_err(5, 1, fail_on=[IOError])
         ... def my_func(self, some=None, args=None):
         ...     if some == 'io': raise IOError()
         ...      raise FileExistsError()
 
-    This will be re-ran 5 times, 1 second apart after each exception is raised, before giving up:
+    This will be re-ran 5 times, 1 second apart after each exception is raised, before giving up::
 
         >>> my_func()
 
-    Where-as this one will immediately re-raise the caught IOError on the first attempt, as it's passed in ``fail_on``:
+    Where-as this one will immediately re-raise the caught IOError on the first attempt, as it's passed in ``fail_on``::
 
         >>> my_func('io')
 
 
+    .. Attention:: For safety reasons, by default ``max_ignore`` is set to ``100``. This means after 100 retries where an
+                       exception was ignored, the decorator will give up and raise the last exception.
+                       
+                       This is to prevent the risk of infinite loops hanging your application. If you are 100% certain that the
+                       function you've wrapped, and/or the exceptions passed in ``ignore`` cannot cause an infinite retry loop, then
+                       you can pass ``max_ignore=False`` to the decorator to disable failure after ``max_ignore`` ignored exceptions.
+    
+
+
     :param int max_retries:  Maximum total retry attempts before giving up
     :param float delay:      Amount of time in seconds to sleep before re-trying the wrapped function
-    :param retry_conf:       Less frequently used arguments, pass in as keyword args:
+    :param retry_conf:       Less frequently used arguments, pass in as keyword args (see below)
 
-    - (list) fail_on:  A list() of Exception types that should result in immediate failure (don't retry, raise)
+    :key list fail_on:  A list() of Exception types that should result in immediate failure (don't retry, raise)
+    
+    :key list ignore:   A list() of Exception types that should be ignored (will retry, but without incrementing the failure counter)
+    
+    :key int|bool max_ignore: (Default: ``100``) If an exception is raised while retrying, and more than this
+             many exceptions (listed in ``ignore``) have been ignored during retry attempts, then give up
+             and raise the last exception.
+             
+             This feature is designed to prevent "ignored" exceptions causing an infinite retry loop. By
+             default ``max_ignore`` is set to ``100``, but you can increase/decrease this as needed.
+             
+             You can also set it to ``False`` to disable raising when too many exceptions are ignored - however, it's
+             strongly not recommended to disable ``max_ignore``, especially if you have ``instance_match=True``,
+             as it could cause an infinite retry loop which hangs your application.
+      
+    
+    :key bool instance_match: (Default: ``False``) If this is set to ``True``, then the exception type comparisons for ``fail_on``
+            and ``ignore`` will compare using ``isinstance(e, x)`` instead of ``type(e) is x``.
+            
+            If this is enabled, then exceptions listed in ``fail_on`` and ``ignore`` will also **match sub-classes** of
+            the listed exceptions, instead of exact matches.
 
-    - (str) retry_msg: Override the log message used for retry attempts. First message param %s is func name,
-      second message param %d is retry attempts remaining
+    :key str retry_msg: Override the log message used for retry attempts. First message param %s is func name,
+                        second message param %d is retry attempts remaining
 
-    - (str) fail_msg:  Override the log message used after all retry attempts are exhausted. First message param %s
-      is func name, and second param %d is amount of times retried.
+    :key str fail_msg: Override the log message used after all retry attempts are exhausted. First message param %s
+                       is func name, and second param %d is amount of times retried.
 
     """
-    retry_msg = retry_conf['retry_msg'] if 'retry_msg' in retry_conf else DEF_RETRY_MSG
-    fail_msg = retry_conf['fail_msg'] if 'fail_msg' in retry_conf else DEF_FAIL_MSG
-    fail_on = list(retry_conf['fail_on']) if 'fail_on' in retry_conf else []
+    retry_msg: str = retry_conf.get('retry_msg', DEF_RETRY_MSG)
+    fail_msg: str = retry_conf.get('fail_msg', DEF_FAIL_MSG)
+    instance_match: bool = is_true(retry_conf.get('instance_match', False))
+    fail_on: List[type] = list(retry_conf.get('fail_on', []))
+    ignore_ex: List[type] = list(retry_conf.get('ignore', []))
+    max_ignore: Union[bool, int] = retry_conf.get('max_ignore', 100)
 
     def _decorator(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            retries = 0
-            if 'retry_attempts' in kwargs:
-                retries = int(kwargs['retry_attempts'])
-                del kwargs['retry_attempts']
-
+            retries = int(kwargs.pop('retry_attempts', 0))
+            ignore_count = int(kwargs.pop('ignore_count', 0))
+            
             try:
                 return f(*args, **kwargs)
             except Exception as e:
-                if type(e) in fail_on:
+                _fail = isinstance(e, tuple(fail_on)) if instance_match else type(e) in fail_on
+                if _fail:
                     log.warning('Giving up. Re-raising exception %s (as requested by `fail_on` arg)', type(e))
                     raise e
+                
+                if max_ignore is not False and ignore_count > max_ignore:
+                    log.warning('Giving up. Ignored too many exceptions (max_ignore: %d, ignore_count: %d). '
+                                'Re-raising exception %s.', max_ignore, ignore_count, type(e))
+                    raise e
+                
                 if retries < max_retries:
                     log.info('%s - %s', type(e), str(e))
                     log.info(retry_msg, f.__name__, max_retries - retries)
                     sleep(delay)
-                    kwargs['retry_attempts'] = retries + 1
+                    
+                    # If 'instance_match' is enabled, we check if the exception was an instance of any of the passed exception types,
+                    # otherwise we use exact exception type comparison against the list.
+                    # _ignore is True if we should ignore this exception (don't increment retries), or False if we should increment.
+                    _ignore = isinstance(e, tuple(ignore_ex)) if instance_match else type(e) in ignore_ex
+                    if _ignore:
+                        log.debug(
+                            " >> (?) Ignoring exception '%s' as exception is in 'ignore' list. Ignore Count: %d // "
+                            "Max Ignores: %d // Instance Match: %s", type(e), ignore_count, max_ignore, instance_match
+                        )
+                    kwargs['retry_attempts'] = retries if _ignore else retries + 1
+                    kwargs['ignore_count'] = ignore_count + 1 if _ignore else ignore_count
+                    
                     return wrapper(*args, **kwargs)
                 log.exception(fail_msg, f.__name__, max_retries)
                 raise e
         return wrapper
     return _decorator
 
+
+def async_retry(max_retries: int = 3, delay: Union[int, float] = 3, **retry_conf):
+    """
+    AsyncIO coroutine compatible version of :func:`.retry_on_err` - for painless automatic retry-on-exception for async code.
+    
+    Decorates an AsyncIO coroutine (``async def``) function or class method, wraps the function/method with a try/catch block, and
+    will automatically re-run the function with the same arguments up to `max_retries` time after any exception is raised, with a
+    ``delay`` second delay between re-tries.
+
+    If it still throws an exception after ``max_retries`` retries, it will log the exception details with ``fail_msg``,
+    and then re-raise it.
+    
+    Usage (retry up to 5 times, 1 second between retries, stop immediately if IOError is detected)::
+    
+        >>> from privex.helpers import async_retry
+        >>>
+        >>> @async_retry(5, 1, fail_on=[IOError])
+        ... async def my_func(some=None, args=None):
+        ...     if some == 'io': raise IOError()
+        ...     raise FileExistsError()
+        ...
+    
+    This will be re-ran 5 times, 1 second apart after each exception is raised, before giving up::
+
+        >>> await my_func()
+
+    Where-as this one will immediately re-raise the caught IOError on the first attempt, as it's passed in ``fail_on``::
+
+        >>> await my_func('io')
+    
+    We can also use ``ignore_on`` to "ignore" certain exceptions. Ignored exceptions cause the function to be retried with a delay, as
+    normal, but without incrementing the total retries counter.
+    
+        >>> from privex.helpers import async_retry
+        >>> import random
+        >>>
+        >>> @async_retry(5, 1, fail_on=[IOError], ignore=[ConnectionResetError])
+        ... async def my_func(some=None, args=None):
+        ...     if random.randint(1,10) > 7: raise ConnectionResetError()
+        ...     if some == 'io': raise IOError()
+        ...     raise FileExistsError()
+        ...
+    
+    To show this at work, we've enabled debug logging for you to see::
+        
+        >>> await my_func()
+        [INFO]    <class 'ConnectionResetError'> -
+        [INFO]    Exception while running 'my_func', will retry 5 more times.
+        [DEBUG]   >> (?) Ignoring exception '<class 'ConnectionResetError'>' as exception is in 'ignore' list.
+                  Ignore Count: 0 // Max Ignores: 100 // Instance Match: False
+        
+        [INFO]    <class 'FileExistsError'> -
+        [INFO]    Exception while running 'my_func', will retry 5 more times.
+        
+        [INFO]    <class 'ConnectionResetError'> -
+        [INFO]    Exception while running 'my_func', will retry 4 more times.
+        [DEBUG]   >> (?) Ignoring exception '<class 'ConnectionResetError'>' as exception is in 'ignore' list.
+                  Ignore Count: 1 // Max Ignores: 100 // Instance Match: False
+        
+        [INFO]    <class 'FileExistsError'> -
+        [INFO]    Exception while running 'my_func', will retry 4 more times.
+    
+    As you can see above, when an ignored exception (``ConnectionResetError``) occurs, the remaining retry attempts doesn't go down.
+    Instead, only the "Ignore Count" goes up.
+    
+    .. Attention:: For safety reasons, by default ``max_ignore`` is set to ``100``. This means after 100 retries where an
+                   exception was ignored, the decorator will give up and raise the last exception.
+                   
+                   This is to prevent the risk of infinite loops hanging your application. If you are 100% certain that the
+                   function you've wrapped, and/or the exceptions passed in ``ignore`` cannot cause an infinite retry loop, then
+                   you can pass ``max_ignore=False`` to the decorator to disable failure after ``max_ignore`` ignored exceptions.
+    
+    
+    :param int max_retries:  Maximum total retry attempts before giving up
+    :param float delay:      Amount of time in seconds to sleep before re-trying the wrapped function
+    :param retry_conf:       Less frequently used arguments, pass in as keyword args (see below)
+    
+    :key list fail_on:  A list() of Exception types that should result in immediate failure (don't retry, raise)
+    
+    :key list ignore:   A list() of Exception types that should be ignored (will retry, but without incrementing the failure counter)
+
+    :key int|bool max_ignore: (Default: ``100``) If an exception is raised while retrying, and more than this
+             many exceptions (listed in ``ignore``) have been ignored during retry attempts, then give up
+             and raise the last exception.
+             
+             This feature is designed to prevent "ignored" exceptions causing an infinite retry loop. By
+             default ``max_ignore`` is set to ``100``, but you can increase/decrease this as needed.
+             
+             You can also set it to ``False`` to disable raising when too many exceptions are ignored - however, it's
+             strongly not recommended to disable ``max_ignore``, especially if you have ``instance_match=True``,
+             as it could cause an infinite retry loop which hangs your application.
+      
+    
+    :key bool instance_match: (Default: ``False``) If this is set to ``True``, then the exception type comparisons for ``fail_on``
+            and ``ignore`` will compare using ``isinstance(e, x)`` instead of ``type(e) is x``.
+            
+            If this is enabled, then exceptions listed in ``fail_on`` and ``ignore`` will also **match sub-classes** of
+            the listed exceptions, instead of exact matches.
+
+    :key str retry_msg: Override the log message used for retry attempts. First message param %s is func name,
+                        second message param %d is retry attempts remaining
+
+    :key str fail_msg: Override the log message used after all retry attempts are exhausted. First message param %s
+                       is func name, and second param %d is amount of times retried.
+    
+    """
+    retry_msg: str = retry_conf.get('retry_msg', DEF_RETRY_MSG)
+    fail_msg: str = retry_conf.get('fail_msg', DEF_FAIL_MSG)
+    instance_match: bool = is_true(retry_conf.get('instance_match', False))
+    fail_on: List[type] = list(retry_conf.get('fail_on', []))
+    ignore_ex: List[type] = list(retry_conf.get('ignore', []))
+    max_ignore: Union[bool, int] = retry_conf.get('max_ignore', 100)
+    
+    def _decorator(f):
+        @functools.wraps(f)
+        async def wrapper(*args, **kwargs):
+            retries = int(kwargs.pop('retry_attempts', 0))
+            ignore_count = int(kwargs.pop('ignore_count', 0))
+            
+            try:
+                return await f(*args, **kwargs)
+            except Exception as e:
+                # If instance_match is enabled, check exception type using isinstance, otherwise use exact type matches
+                _fail = isinstance(e, tuple(fail_on)) if instance_match else type(e) in fail_on
+                if _fail:
+                    log.warning('Giving up. Re-raising exception %s (as requested by `fail_on` arg)', type(e))
+                    raise e
+                
+                if max_ignore is not False and ignore_count > max_ignore:
+                    log.warning('Giving up. Ignored too many exceptions (max_ignore: %d, ignore_count: %d). '
+                                'Re-raising exception %s.', max_ignore, ignore_count, type(e))
+                    raise e
+                
+                if retries < max_retries:
+                    log.info('%s - %s', type(e), str(e))
+                    log.info(retry_msg, f.__name__, max_retries - retries)
+                    await asyncio.sleep(delay)
+                    
+                    # If 'instance_match' is enabled, we check if the exception was an instance of any of the passed exception types,
+                    # otherwise we use exact exception type comparison against the list.
+                    # _ignore is True if we should ignore this exception (don't increment retries), or False if we should increment.
+                    _ignore = isinstance(e, tuple(ignore_ex)) if instance_match else type(e) in ignore_ex
+                    if _ignore:
+                        log.debug(
+                            " >> (?) Ignoring exception '%s' as exception is in 'ignore' list. Ignore Count: %d // "
+                            "Max Ignores: %d // Instance Match: %s", type(e), ignore_count, max_ignore, instance_match
+                        )
+                    kwargs['retry_attempts'] = retries if _ignore else retries + 1
+                    kwargs['ignore_count'] = ignore_count + 1 if _ignore else ignore_count
+                    
+                    return await wrapper(*args, **kwargs)
+                log.exception(fail_msg, f.__name__, max_retries)
+                raise e
+        
+        return wrapper
+    
+    return _decorator
 
 class FormatOpt(Enum):
     """

@@ -7,6 +7,49 @@ To make the module easy to use, :py:func:`.adapter_get` initialises an instance 
 global cache adapter instance has been setup. This means you can use the various alias functions in this module
 without having to configure a cache adapter.
 
+Available Cache Adapters
+----------------------------------------------------
+
+**Standard Synchronous Adapters**
+
+Two synchronous cache adapters are included by default - :class:`.MemoryCache` (dependency free), and
+:class:`.RedisCache` (needs ``redis`` library).
+
+While these synchronous classes don't support coroutines for most methods, as of privex-helpers 2.7 the method
+:meth:`privex.helpers.cache.CacheAdapter.CacheAdapter.get_or_set_async` is an async version of :meth:`.CacheAdapter.get_or_set`,
+and is available on all :class:`.CacheAdapter` sub-classes (both :class:`.MemoryCache` and :class:`.RedisCache`).
+``get_or_set_async`` allows a coroutine or coroutine function/method reference to be passed as the fallback value.
+
+    ==============================   ==================================================================================================
+    Adapter                          Description
+    ==============================   ==================================================================================================
+    :class:`.CacheAdapter`           This is the base class for all synchronous cache adapters (doesn't do anything)
+    :class:`.MemoryCache`            A cache adapter which stores cached items in memory using a dict. Fully functional incl. timeout.
+    :class:`.RedisCache`             A cache adapter for `Redis`_ using the python library ``redis``
+    ==============================   ==================================================================================================
+
+**Asynchronous (Python AsyncIO) Adapters**
+
+Over the past few years, Python's AsyncIO has grown more mature and has gotten a lot of attention. Thankfully, whether you use
+AsyncIO or not, we've got you covered.
+
+Three AsyncIO cache adapters are included by default - :class:`.AsyncMemoryCache` (dependency free),
+:class:`.AsyncRedisCache` (needs ``aioredis`` library), and :class:`.AsyncMemcachedCache` (needs ``aiomcache`` library).
+
+    ==============================   ==================================================================================================
+    Adapter                          Description
+    ==============================   ==================================================================================================
+    :class:`.AsyncCacheAdapter`      This is the base class for all AsyncIO cache adapters (abstract class, only implements get_or_set)
+    :class:`.AsyncMemoryCache`       A cache adapter which stores cached items in memory using a dict. Fully functional incl. timeout.
+    :class:`.AsyncRedisCache`        A cache adapter for `Redis`_ using the AsyncIO python library ``aioredis``
+    :class:`.AsyncMemcachedCache`    A cache adapter for `Memcached`_ using the AsyncIO python library ``aiomcache``
+    ==============================   ==================================================================================================
+
+
+.. _Redis: https://redis.io/
+.. _Memcached: https://www.memcached.org/
+
+
 Setting / updating the global cache adapter instance
 ----------------------------------------------------
 
@@ -30,6 +73,29 @@ can import ``cached`` to enable dictionary-like cache item access.
     >>> cached['hello']
     'world'
     >>> cached['otherkey'] = 'testing'
+
+You can also use AsyncIO adapters with the global cache adapter wrapper. :class:`.CacheWrapper` uses :func:`.awaitable` to
+ensure that AsyncIO adapters can work synchronously when being called from a synchronous function, while working asynchronously
+from a non-async function.
+
+
+    >>> my_adapter = cache.AsyncRedisCache()
+    >>> cache.adapter_set(my_adapter)
+    >>>
+    >>> # get_hello_async() is async, so @awaitable returns the normal .get() coroutine for awaiting
+    >>> async def get_hello_async():
+    ...     result = await cached.get('hello')
+    ...     return result
+    ...
+    >>> # get_hello() is synchronous, so @awaitable seamlessly runs .get() in an event loop and returns
+    >>> # the result - get_hello() can treat it as if it were just a normal synchronous function.
+    >>> def get_hello():
+    ...     return cached.get('hello')
+    ...
+    >>> get_hello()
+    'world'
+    >>> await get_hello_async()
+    'world'
 
 
 Plug-n-play usage
@@ -105,6 +171,10 @@ control, for example:
 """
 import logging
 
+from privex.helpers.asyncx import awaitable
+
+log = logging.getLogger(__name__)
+
 from typing import Any, Optional, Union, Type
 
 from privex.helpers.cache.CacheAdapter import CacheAdapter
@@ -113,12 +183,24 @@ from privex.helpers.cache.MemoryCache import MemoryCache
 try:
     from privex.helpers.cache.RedisCache import RedisCache
 except ImportError:
-    pass
+    log.debug("[%s] Failed to import %s from %s (missing package 'redis' maybe?)", __name__, 'RedisCache', f'{__name__}.RedisCache')
+
+try:
+    from privex.helpers.cache.asyncx import *
+except ImportError:
+    log.exception("[%s] Failed to import %s from %s (unknown error!)", __name__, '*', f'{__name__}.asyncx')
+    
+# try:
+#     from privex.helpers.cache.asyncx import AsyncMemoryCache
+#     from privex.helpers.cache.asyncx import AsyncCacheAdapter
+# except ImportError:
+#     log.exception(
+#         "[%s] Failed to import AsyncMemoryCache and/or AsyncCacheAdapter from privex.helpers.cache.asyncx...", __name__
+#     )
 
 from privex.helpers.exceptions import NotConfigured, CacheNotFound
 from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
 
-log = logging.getLogger(__name__)
 
 __STORE = {}
 
@@ -181,19 +263,26 @@ class CacheWrapper(object):
         if hasattr(super(), item):
             return getattr(self, item)
         
+        @awaitable
         def _wrapper(*args, **kwargs):
-            return getattr(CacheWrapper.get_adapter(), item)(*args, **kwargs)
+            with CacheWrapper.get_adapter() as a:
+                return getattr(a, item)(*args, **kwargs)
         
         return _wrapper
     
+    @awaitable
     def __getitem__(self, item):
         try:
-            return CacheWrapper.get_adapter().get(key=item, fail=True)
+            with CacheWrapper.get_adapter() as a:
+                return a.get(key=item, fail=True)
         except CacheNotFound:
             raise KeyError(f'Key "{item}" not found in cache.')
-    
+
+    @awaitable
     def __setitem__(self, key, value):
-        return CacheWrapper.get_adapter().set(key=key, value=value)
+        with CacheWrapper.get_adapter() as a:
+            return a.set(key=key, value=value)
+
 
 
 cached: CacheAdapter = CacheWrapper()

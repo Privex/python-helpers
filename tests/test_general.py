@@ -45,6 +45,9 @@ from typing import Union, Dict
 
 from privex import helpers
 from tests.base import PrivexBaseCase
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class TestGeneral(PrivexBaseCase):
@@ -188,6 +191,143 @@ class TestGeneral(PrivexBaseCase):
         out, err = yield from helpers.call_sys_async('wc', '-c', write='hello world')
         out = int(out)
         self.assertEqual(out, 11)
+    
+    ex_settings = dict(
+        DB_USER='root', DB_PASS='ExamplePass', DB_HOST='localhost', DB_NAME='example_db', FAKE_SETTING='hello',
+        EXAMPLE='world', HELLO_DB='lorem ipsum'
+    )
+    
+    class ExSettingsClass:
+        DB_USER = 'root'
+        DB_PASS = 'ExamplePass'
+        DB_HOST = 'localhost'
+        DB_NAME = 'example_db'
+        FAKE_SETTING = 'hello'
+        EXAMPLE = 'world'
+        HELLO_DB = 'lorem ipsum'
+
+    class ExSettingsInst:
+        def __init__(self):
+            self.db_user = 'root'
+            self.db_pass = 'ExamplePass'
+            self.db_host = 'localhost'
+            self.db_name = 'example_db'
+            self.fake_setting = 'hello'
+            self.example = 'world'
+            self.hello_db = 'lorem ipsum'
+
+    def test_extract_settings_dict(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a ``dict``"""
+        ex_settings = self.ex_settings
+        extracted = helpers.extract_settings('DB_', ex_settings)
+        self._compare_settings(ex_settings, extracted)
+
+    def _compare_settings(self, ex_settings: Union[dict, type, object], extracted: dict,
+                          uppercase=False, orig_uppercase=True):
+        """
+        This is a helper method for :func:`.extract_settings` test cases which use :attr:`.ex_settings` or :class:`.ExSettingsClass`,
+        which helps avoid duplicating test case code.
+        
+            * Tests that ``extracted`` is a dictionary
+            * Tests that ``extracted`` contains exactly 4 items
+            * Tests that ``user``, ``pass``, ``host``, and ``name`` (or uppercase versions) are present in ``extracted``, and match the
+              equivalent values on ``ex_settings``.
+        
+        :param ex_settings:    The original settings object which :func:`.extract_settings` was extracting from
+        :param extracted:      The extracted settings dict returned by :func:`.extract_settings`
+        :param uppercase:      If ``True``, check ``extracted`` for ``USER``, ``PASS`` etc. instead of their lowercase versions.
+        :param orig_uppercase: If ``True``, check ``ex_settings`` for ``DB_USER``, ``DB_PASS`` etc. instead of their lowercase versions.
+        """
+        if not isinstance(ex_settings, dict):
+            ex_settings = dict(ex_settings.__dict__)
+        
+        _key_map = (('user', 'db_user',), ('pass', 'db_pass',),
+                    ('host', 'db_host',), ('name', 'db_name',),)
+        e_up, s_up = uppercase, orig_uppercase
+        key_map = [(_ek.upper() if e_up else _ek, _sk.upper() if s_up else _sk) for _ek, _sk in _key_map]
+        
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 4)
+        
+        for _ek, _sk in key_map:
+            self.assertEqual(extracted[_ek], ex_settings[_sk])
+
+    def test_extract_settings_class(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class"""
+        extracted = helpers.extract_settings('DB_', self.ExSettingsClass)
+    
+        self._compare_settings(self.ExSettingsClass, extracted)
+
+    def test_extract_settings_class_instance(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class instance/object"""
+        inst = self.ExSettingsInst()
+        extracted = helpers.extract_settings('DB_', inst)
+    
+        self._compare_settings(inst, extracted, orig_uppercase=False)
+
+    def test_extract_settings_class_instance_case_sensitive(self):
+        """
+        Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class instance/object (case sensitive)
+        """
+        inst = self.ExSettingsInst()
+        extracted = helpers.extract_settings('db_', inst, _case_sensitive=True)
+    
+        self._compare_settings(inst, extracted, orig_uppercase=False)
+
+    def test_extract_settings_class_instance_case_sensitive_fail(self):
+        """
+        Test :func:`.extract_settings` returns empty dict for ``DB_`` prefixed settings from a class instance
+        (case sensitive)
+        """
+        inst = self.ExSettingsInst()
+        extracted = helpers.extract_settings('DB_', inst, _case_sensitive=True)
+    
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 0)
+
+    def test_extract_settings_modules(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a python module"""
+        from privex.helpers import settings as ex_settings
+        
+        keys_ex = [k for k in ex_settings.__dict__.keys() if k[:6] == 'REDIS_']
+        
+        extracted = helpers.extract_settings('REDIS_', ex_settings)
+        self.assertEqual(extracted['db'], ex_settings.REDIS_DB)
+        self.assertEqual(extracted['port'], ex_settings.REDIS_PORT)
+        self.assertEqual(extracted['host'], ex_settings.REDIS_HOST)
+        
+        self.assertEqual(len(extracted.keys()), len(keys_ex))
+
+    def test_extract_settings_case_sensitive(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class (case sensitive)"""
+        extracted = helpers.extract_settings('DB_', self.ExSettingsClass, _case_sensitive=True)
+
+        self._compare_settings(self.ExSettingsClass, extracted, uppercase=True)
+
+    def test_extract_settings_case_sensitive_fail(self):
+        """Test :func:`.extract_settings` returns empty dict for ``db_`` prefix from a class (case sensitive)"""
+        extracted = helpers.extract_settings('db_', self.ExSettingsClass, _case_sensitive=True)
+    
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 0)
+
+    def test_extract_settings_case_sensitive_lowercase_keys(self):
+        """
+        Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class
+        (case sensitive + lowercase keys)
+        """
+        extracted = helpers.extract_settings('DB_', self.ExSettingsClass, _case_sensitive=True, _keys_lower=True)
+        self._compare_settings(self.ExSettingsClass, extracted, uppercase=False)
+
+    def test_extract_settings_case_sensitive_lowercase_keys_fail(self):
+        """
+        Test :func:`.extract_settings` returns empty dict for ``db_`` prefixed settings from a class
+        (case sensitive + lowercase keys)
+        """
+        extracted = helpers.extract_settings('db_', self.ExSettingsClass, _case_sensitive=True, _keys_lower=True)
+    
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 0)
 
 
 class TestAsyncX(PrivexBaseCase):

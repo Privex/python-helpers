@@ -9,10 +9,11 @@ privex.helpers.decorators
 
    .. autosummary::
       :toctree: decorators
-      
+
+      async_retry
+      async_sync
       retry_on_err
       r_cache
-      async_sync
       mock_decorator
 
 

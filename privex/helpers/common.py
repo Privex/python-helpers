@@ -38,6 +38,8 @@ from os import getenv as env
 from subprocess import PIPE, STDOUT
 from typing import Sequence, List, Union, Tuple, Type, Dict, TypeVar, Any, Iterable, Callable, NewType, Optional
 
+from privex.helpers import settings
+
 from privex.helpers.collections import DictObject, OrderedDictObject
 
 log = logging.getLogger(__name__)
@@ -366,6 +368,161 @@ def env_int(env_key: str, env_default=None) -> int:
 def env_decimal(env_key: str, env_default=None) -> Decimal:
     """Alias for :py:func:`.env_cast` with ``Decimal`` casting"""
     return env_cast(env_key=env_key, cast=Decimal, env_default=env_default)
+
+
+def extract_settings(prefix: str, _settings=settings, defaults=None, merge_conf=None, **kwargs) -> dict:
+    """
+    Extract prefixed settings from a given module, dictionary, class, or instance.
+
+    This helper function searches the object ``_settings`` for keys starting with ``prefix``, and for any matching keys, it removes
+    the prefix from each key, converts the remaining portion of each key to lowercase (unless you've set ``_case_sensitive=True``),
+    and then returns the keys their linked values as a ``dict``.
+
+    For example, if you had a file called ``myapp/settings.py`` which contained ``REDIS_HOST = 'localhost'``
+    and ``REDIS_PORT = 6379``, you could then run::
+
+        >>> # noinspection PyUnresolvedReferences
+        >>> from myapp import settings
+        >>> extract_settings('REDIS_', settings)
+        {'host': 'localhost', 'port': 6379}
+
+
+    Example uses
+    ^^^^^^^^^^^^
+
+
+    Example settings module at ``myapp/settings.py``
+
+    .. code-block:: python
+
+        from os.path import dirname, abspath, join
+
+        BASE_DIR = dirname(dirname(dirname(abspath(__file__))))
+        VERSION_FILE = join(BASE_DIR, 'privex', 'helpers', '__init__.py')
+
+        REDIS_HOST = 'localhost'
+        REDIS_PORT = 6379
+        REDIS_DB = 0
+
+        DEFAULT_CACHE_TIMEOUT = 300
+
+
+    **Example - Extract Redis settings**::
+
+        >>> # noinspection PyUnresolvedReferences
+        >>> from myapp import settings
+        >>> from privex.helpers import extract_settings
+        >>>
+        >>> # All keyword arguments (apart from _settings_mod and _keys_lower) are converted into a dictionary
+        >>> # and merged with the extracted settings
+        >>> # noinspection PyTypeChecker
+        >>> extract_settings('REDIS_', _settings=settings, port=6479, debug=True)
+        {'host': 'localhost', 'port': 6379, 'db': 0, 'debug': True}
+        >>> extract_settings('REDIS_', _settings=settings, merge_conf=dict(port=6479))
+        {'host': 'localhost', 'port': 6479, 'db': 0}
+
+
+    **Example - Extract Redis settings - case sensitive mode**::
+
+        >>> extract_settings('REDIS_', _settings=settings, _case_sensitive=True)
+        {'HOST': 'localhost', 'PORT': 6379, 'DB': 0}
+
+
+    **Example - Extract database settings from the environment**
+
+    The below dict comprehension is just so you can see the original environment keys before we run ``extract_settings``::
+
+        >>> import os
+        >>> from privex.helpers import extract_settings
+        >>>
+        >>> {k: v for k,v in os.environ.items() if 'DB_' in k}
+        {'DB_USER': 'root',
+         'DB_PASS': 'ExamplePass',
+         'DB_NAME': 'example_db'}
+
+
+    We'll now call ``extract_settings`` using :attr:`os.environ` converted into a dictionary, and attempt to quickly
+    obtain the database settings - with lowercase keys, and without their ``DB_`` prefix.
+
+    Below, you'll see extract_settings extracted all keys starting with DB_, removed the DB_ prefix, converted the
+    remaining portion of the key to lowercase, and also merged in the default setting 'host' since DB_HOST didn't exist.
+
+    The outputted dictionary is perfect for passing to many database library constructors::
+
+        >>> extract_settings('DB_', dict(os.environ), host='localhost')
+        {'user': 'root',
+         'pass': 'ExamplePass',
+         'name': 'example_db',
+         'host': 'localhost'}
+
+
+    :param str prefix: The prefix (including the first underscore (``_``) or other separator) to search for in the settings
+    :param Module|dict|object _settings: The object to extract the settings from. The object can be one of the following:
+
+         * A ``module``, for example passing ``settings`` after running ``from myapp import settings``
+
+         * A ``dict``, for example ``extract_settings('X_', dict(X_A=1, X_B=2))``
+
+         * A class which has the desired settings defined on it's ``.__dict__`` (e.g. any standard user
+           class - ``class MyClass:``, with settings defined as static class attributes)
+
+         * An instance of a class, which has all desired settings defined inside of ``.__dict__`` (e.g. any standard user class instance,
+           with static and/or instance attributes for each setting)
+
+         * Any other type which supports being casted to a dictionary via ``dict(obj)``.
+
+
+    :param dict merge_conf: Optionally you may specify a dictionary of "override" settings to merge with the extracted settings.
+                            The values in this dictionary take priority over both ``defaults``, and the keys from ``_settings``.
+
+    :param dict defaults:   Optionally you may specify a dictionary of default settings to merge **before** the extracted settings,
+                            meaning values are only used if the key wasn't present in the extracted settings nor ``merge_conf``.
+
+    :param kwargs: Additional settings as keyword arguments (see below). Any keyword argument keys which aren't valid settings will
+                   be added to the ``defaults`` dictionary.
+                   This means that defaults can also be specified as kwargs - as long as they don't clash with any
+                   used kwarg settings (see below).
+
+    :key _case_sensitive: (Default ``False``) If ``True``, ``prefix`` is compared against ``_settings`` keys case sensitively.
+                          If ``False``, then both ``prefix`` and each ``_settings`` key is converted to lowercase before comparison.
+
+    :key _keys_lower:     Defaults to ``True`` if _case_sensitive is False, and ``False`` if _case_sensitive is True.
+                          If ``True``, each extracted settings key is converted to lowercase before returning them - otherwise they're
+                          returned with the same case as they were in ``_settings``.
+
+    :return dict config:  The extracted configuration keys (without their prefixes) and values as a dictionary.
+                          Based on the extracted keys from ``_settings``, the fallback settings in ``defaults`` (and excess ``kwargs``),
+                          plus the override settings in ``merge_conf``.
+    """
+    case_sensitive = kwargs.pop('_case_sensitive', False)
+    keys_lower = kwargs.pop('_keys_lower', not case_sensitive)
+    
+    defaults = {} if defaults is None else dict(defaults)
+    merge_conf = {} if merge_conf is None else dict(merge_conf)
+    
+    if isinstance(_settings, dict):
+        set_dict = dict(_settings)
+    elif type(_settings).__name__ == 'module' or isinstance(_settings, object) or inspect.isclass(_settings):
+        set_dict = dict(_settings.__dict__)
+    else:
+        try:
+            # noinspection PyTypeChecker
+            set_dict = dict(_settings)
+            # noinspection PyTypeChecker
+            if len(set_dict.keys()) < 1 <= len(_settings): raise Exception()
+        except Exception:
+            set_dict = dict(_settings.__dict__)
+    
+    set_conf = {}
+    for k, v in set_dict.items():
+        l = len(prefix)
+        matched = (k[:l] == prefix) if case_sensitive else (k[:l].lower() == prefix.lower())
+        if matched:
+            _key = k[l:]
+            _key = _key.lower() if keys_lower else _key
+            set_conf[_key] = v
+    
+    return {**defaults, **set_conf, **kwargs, **merge_conf}
 
 
 def dec_round(amount: Decimal, dp: int = 2, rounding=None) -> Decimal:

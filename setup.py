@@ -72,7 +72,7 @@ setup(
 
     license='MIT',
     install_requires=[
-        'privex-loghelper>=1.0.4', 'python-dateutil', 'sniffio',
+        'privex-loghelper>=1.0.4', 'python-dateutil', 'sniffio', 'async-property',
     ],
     cmdclass=extra_commands,
     extras_require=extras_require(extensions),

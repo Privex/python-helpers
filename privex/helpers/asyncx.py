@@ -25,10 +25,14 @@ To avoid issues with the ``async`` keyword, this file is named ``asyncx`` instea
 
 """
 import asyncio
+import warnings
 from asyncio.subprocess import PIPE, STDOUT
-from typing import Tuple, Callable, Any, Union, Coroutine
+from typing import Tuple, Callable, Any, Union, Coroutine, List
 
 from privex.helpers.common import STRBYTES, byteify, shell_quote
+import logging
+
+log = logging.getLogger(__name__)
 
 
 def run_sync(func, *args, **kwargs):
@@ -150,6 +154,26 @@ async def call_sys_async(proc, *args, write: STRBYTES = None, **kwargs) -> Tuple
     return stdout, stderr
 
 
+AWAITABLE_BLACKLIST_FUNCS: List[str] = []
+"""
+A list of plain function names - for which :func:`.awaitable` decorated function/methods should always
+run synchronously.
+"""
+
+AWAITABLE_BLACKLIST_MODS: List[str] = []
+"""
+A list of fully qualified module names - for which :func:`.awaitable` decorated function/methods should always
+run synchronously.
+"""
+
+AWAITABLE_BLACKLIST: List[str] = []
+"""
+A list of fully qualified module paths to functions/methods, if any of these functions/methods call an :func:`.awaitable`
+decorated function/method, then the awaitable will be ran synchronously regardless of whether there's an active
+AsyncIO context or not.
+"""
+
+
 def awaitable(func: Callable) -> Callable:
     """
     Decorator which helps with creation of async wrapper functions.
@@ -182,14 +206,60 @@ def awaitable(func: Callable) -> Callable:
         ...     res = some_func("hello world")
         ...
     
+    **Blacklists**
+    
+    If you mix a lot of synchronous and asynchronous code, :mod:`sniffio` may return coroutines to synchronous functions
+    that were called from asynchronous functions, which can of course cause problems.
+    
+    To avoid this issue, you can blacklist function names, module names (and their sub-modules), and/or fully qualified
+    module paths to functions/methods.
+    
+    Three blacklists are available in this module, which allow you to specify caller functions/methods, modules, or
+    fully qualified module paths to functions/methods for which :func:`.awaitable` wrapped functions/methods
+    should **always** execute in an event loop and return synchronously.
+    
+    Example::
+        
+        >>> from privex.helpers import asyncx
+        >>> # All code within the module 'some.module' and it's sub-modules will always have awaitable's run their wrapped
+        >>> # functions synchronously.
+        >>> asyncx.AWAITABLE_BLACKLIST_MODS += ['some.module']
+        >>> # Whenever a function with the name 'example_func' (in any module) calls an awaitable, it will always run synchronously
+        >>> asyncx.AWAITABLE_BLACKLIST_FUNCS += ['example_func']
+        >>> # Whenever the specific class method 'other.module.SomeClass.some_sync' calls an awaitable, it will always run synchronously.
+        >>> asyncx.AWAITABLE_BLACKLIST += ['other.module.SomeClass.some_sync']
+    
     
     Original source: https://github.com/encode/httpx/issues/572#issuecomment-562179966
     
     """
-    def wrapper(
-            *args: Any, **kwargs: Any
-    ) -> Union[Any, Coroutine[Any, Any, Any]]:
+    def wrapper(*args: Any, **kwargs: Any) -> Union[Any, Coroutine[Any, Any, Any]]:
         coroutine = func(*args, **kwargs)
+
+        # The wrapped function isn't a coroutine function, nor a coroutine. This may be caused by an adapter wrapper class which deals
+        # with both synchronous and asynchronous adapters.
+        # Since it doesn't appear to be a coroutine, just return the result.
+        if not asyncio.iscoroutinefunction(coroutine) and not asyncio.iscoroutine(coroutine):
+            return coroutine
+
+        try:
+            from privex.helpers.black_magic import calling_module, calling_function, caller_name
+            
+            if caller_name() in AWAITABLE_BLACKLIST:
+                return asyncio.get_event_loop().run_until_complete(coroutine)
+            elif calling_function() in AWAITABLE_BLACKLIST_FUNCS:
+                return asyncio.get_event_loop().run_until_complete(coroutine)
+            else:
+                _mod = calling_module()
+                if _mod in AWAITABLE_BLACKLIST_MODS:
+                    return asyncio.get_event_loop().run_until_complete(coroutine)
+                for _m in AWAITABLE_BLACKLIST_MODS:
+                    if not _m.startswith(_mod + '.'):
+                        continue
+                    return asyncio.get_event_loop().run_until_complete(coroutine)
+        except Exception:
+            log.exception("Failed to check blacklist for awaitable function. Falling back to standard async sniffing.")
+            
         try:
             import sniffio
         except ImportError as e:
