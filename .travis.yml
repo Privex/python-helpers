@@ -1,6 +1,7 @@
 dist: bionic
 services:
   - redis-server
+  - memcached
 language: python
 cache: pip
 python:
