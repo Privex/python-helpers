@@ -1,9 +1,9 @@
-Git
-===
+NO\_RESULT
+==========
 
-.. currentmodule:: privex.helpers.extras.git
+.. currentmodule:: privex.helpers.types
 
-.. autoclass:: Git
+.. autoclass:: NO_RESULT
 
 
    .. automethod:: __init__
@@ -16,7 +16,7 @@ Methods
 .. rubric:: Methods
 
 .. autosummary::
-   :toctree: git
+   :toctree: no_result
 
 
 

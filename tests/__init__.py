@@ -173,7 +173,7 @@ from privex.loghelper import LogHelper
 from privex.helpers import env_bool
 from tests.base import PrivexBaseCase, EmptyIter
 from tests.test_cache import *
-from tests.test_general import *
+from tests.general import *
 from tests.test_crypto import *
 from tests.test_bool import TestBoolHelpers
 from tests.test_rdns import TestIPReverseDNS

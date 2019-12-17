@@ -31,16 +31,16 @@ import argparse
 import logging
 import subprocess
 import sys
-from collections import namedtuple, OrderedDict
-from datetime import datetime
+from collections import OrderedDict
 from decimal import Decimal, getcontext
 from os import getenv as env
 from subprocess import PIPE, STDOUT
-from typing import Sequence, List, Union, Tuple, Type, Dict, TypeVar, Any, Iterable, Callable, NewType, Optional
+from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional
 
 from privex.helpers import settings
 
 from privex.helpers.collections import DictObject, OrderedDictObject
+from privex.helpers.types import T, K, V, C, USE_ORIG_VAR, STRBYTES
 
 log = logging.getLogger(__name__)
 
@@ -50,17 +50,7 @@ SAFE_CHARS = 'abcdefhkmnprstwxyz23456789ACDEFGHJKLMNPRSTWXYZ'
 ALPHANUM = string.ascii_uppercase + string.digits + string.ascii_lowercase
 """All characters from a-z, A-Z, and 0-9 - for random strings where there's no risk of user font confusion"""
 
-T = TypeVar('T')
-"""Plain generic type variable for use in helper functions"""
-K = TypeVar('K')
-"""Plain generic type variable for use in helper functions"""
-V = TypeVar('V')
-"""Plain generic type variable for use in helper functions"""
 
-C = TypeVar('C', type, callable, Callable)
-"""Generic type variable constrained to :class:`type` / :class:`typing.Callable` for use in helper functions"""
-CL = TypeVar('CL', type, callable, Callable)
-"""Generic type variable constrained to :class:`type` / :class:`typing.Callable` for use in helper functions"""
 
 
 def random_str(size: int = 50, chars: Sequence = SAFE_CHARS) -> str:
@@ -128,14 +118,7 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
     return False
 
 
-USE_ORIG_VAR = type('UseOrigVar', (), {})
-"""
-A simple functionless type, used purely as a default parameter value meaning "fallback to the value from a certain
-other parameter".
 
-Primarily used in :func:`.empty_if` but can be used by any function/method, including use outside of privex-helpers.
-
-"""
 
 
 def empty_if(v: V, is_empty: K = None, not_empty: T = USE_ORIG_VAR, **kwargs) -> Union[T, K, V]:
@@ -750,8 +733,6 @@ def human_name(class_name: Union[str, bytes, callable, Type[object]]) -> str:
     return ''.join(new_name).strip()
 
 
-STRBYTES = Union[bytes, str]
-"""Shorter alias for ``Union[bytes, str]``"""
 
 
 def shell_quote(*args: str) -> str:
@@ -823,7 +804,6 @@ def call_sys(proc, *args, write: STRBYTES = None, **kwargs) -> Tuple[bytes, byte
     handle = subprocess.Popen(args, stdout=stdout, stderr=stderr, stdin=stdin, **kwargs)
     stdout, stderr = handle.communicate(input=byteify(write)) if write is not None else handle.communicate()
     return stdout, stderr
-
 
 
 IS_XARGS = re.compile('^\*([a-zA-Z0-9_])+$')

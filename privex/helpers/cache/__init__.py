@@ -284,7 +284,6 @@ class CacheWrapper(object):
             return a.set(key=key, value=value)
 
 
-
 cached: CacheAdapter = CacheWrapper()
 """
 This module attribute acts as a singleton, containing an instance of :class:`.CacheWrapper` which is designed

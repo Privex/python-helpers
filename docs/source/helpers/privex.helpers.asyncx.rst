@@ -16,7 +16,10 @@ privex.helpers.asyncx
    
       async_sync
       awaitable
+      awaitable_class
       call_sys_async
+      is_async_context
+      loop_run
       run_sync
    
    
@@ -28,6 +31,7 @@ privex.helpers.asyncx
    .. autosummary::
       :toctree: asyncx
    
+      AwaitableMixin
       aobject
    
    

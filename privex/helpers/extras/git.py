@@ -2,8 +2,9 @@ from os import getcwd
 from os.path import isabs, abspath, join
 from typing import Tuple, Optional, Coroutine, Union, Any
 
-from privex.helpers.common import stringify, empty, STRBYTES, empty_if
-from privex.helpers.asyncx import call_sys_async, awaitable
+from privex.helpers.common import stringify, empty, empty_if
+from privex.helpers import STRBYTES
+from privex.helpers.asyncx import call_sys_async, awaitable, awaitable_class
 from privex.helpers.exceptions import SysCallError
 
 
@@ -25,7 +26,40 @@ def _repo(repo):
     return join(getcwd(), repo) if not isabs(repo) else repo
 
 
+@awaitable_class
 class AsyncGit:
+    """
+    This class uses the :func:`.awaitable_class` decorator to make the class work both synchronously and asynchronously, without needing
+    to duplicate code.
+    
+    The :func:`.awaitable_class` decorator detects whether the methods are being called from a synchronous, or an asynchronous
+    function/method.
+    
+    * If they're being called from an async function, then a coroutine will be returned, and must be ``await``'ed.
+    
+    * If they're being called from a synchronous function, then it will spin up an event loop, run the method in
+      the event loop, then return the result transparently.
+    
+    
+    **Synchronous usage**::
+        
+        >>> g = Git()   # Git is an alias for AsyncGit, there is no difference between them
+        >>>
+        >>> def some_func():
+        ...     current_commit = g.get_current_commit()
+        ...     print(current_commit)
+        'ac52b28f551825160785f9ea7e96f86ccc869cc1'
+    
+    **Asynchronous usage**::
+        
+        >>> g = Git()    # Git is an alias for AsyncGit, there is no difference between them
+        >>>
+        >>> async def some_func():
+        ...     current_commit = await g.get_current_commit()
+        ...     print(current_commit)
+        'ac52b28f551825160785f9ea7e96f86ccc869cc1'
+
+    """
     repo: Optional[str]
     default_version: str
     
@@ -126,87 +160,8 @@ class AsyncGit:
         return await self._git("--no-pager", "log", *args, repo=repo)
 
 
-class Git(AsyncGit):
-    """
-    This is a wrapper for :class:`.AsyncGit` which uses the :func:`.awaitable` decorator to make the class
-    work both synchronously and asynchronously, without needing to duplicate code.
-    
-    The :func:`.awaitable` decorator detects whether the methods are being called from a synchronous, or asynchronous
-    function/method.
-    
-    * If they're being called from an async function, then a coroutine will be returned, and must be ``await``'ed.
-    
-    * If they're being called from a synchronous function, then it will spin up an event loop, run the method in
-      the event loop, then return the result transparently.
-    
-    
-    **Synchronous usage**::
-        
-        >>> g = Git()
-        >>>
-        >>> def some_func():
-        ...     current_commit = g.get_current_commit()
-        ...     print(current_commit)
-        'ac52b28f551825160785f9ea7e96f86ccc869cc1'
-    
-    **Asynchronous usage**::
-        
-        >>> g = Git()
-        >>>
-        >>> async def some_func():
-        ...     current_commit = await g.get_current_commit()
-        ...     print(current_commit)
-        'ac52b28f551825160785f9ea7e96f86ccc869cc1'
-    
-    """
-    _co_str = Union[str, Coroutine[Any, Any, str]]
-
-    @awaitable
-    def get_current_commit(self, version: str = None, repo: str = None) -> _co_str:
-        return super().get_current_commit(version=version, repo=repo)
-
-    @awaitable
-    def get_current_branch(self, repo: str = None) -> _co_str:
-        return super().get_current_branch(repo=repo)
-
-    @awaitable
-    def get_current_tag(self, version: str = None, repo: str = None) -> _co_str:
-        return super().get_current_tag(version=version, repo=repo)
-    
-    @awaitable
-    def init(self, *args, repo: str = None) -> _co_str:
-        return super().init(*args, repo=repo)
-    
-    @awaitable
-    def add(self, *args, repo: str = None) -> _co_str:
-        return super().add(*args, repo=repo)
-    
-    @awaitable
-    def branch(self, *args, repo: str = None) -> _co_str:
-        return super().branch(*args, repo=repo)
-
-    @awaitable
-    def tag(self, *args, repo: str = None) -> _co_str:
-        return super().tag(*args, repo=repo)
-    
-    @awaitable
-    def commit(self, message: str, *args, repo: str = None) -> _co_str:
-        return super().commit(message, *args, repo=repo)
-    
-    @awaitable
-    def checkout(self, branch: str, *args, repo: str = None, new: bool = False) -> _co_str:
-        return super().checkout(branch, *args, repo=repo, new=new)
-
-    @awaitable
-    def log(self, *args, repo: str = None, concise=True) -> _co_str:
-        return super().log(*args, repo=repo, concise=concise)
-
-    @awaitable
-    def status(self, *args, repo: str = None, concise=True) -> _co_str:
-        return super().status(*args, repo=repo, concise=concise)
-
-
-_cwd_git = Git()
+Git = AsyncGit
+_cwd_git = AsyncGit()
 
 get_current_commit = _cwd_git.get_current_commit
 get_current_branch = _cwd_git.get_current_branch

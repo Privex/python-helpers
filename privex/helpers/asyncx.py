@@ -25,19 +25,33 @@ To avoid issues with the ``async`` keyword, this file is named ``asyncx`` instea
 
 """
 import asyncio
+import inspect
 import warnings
 from asyncio.subprocess import PIPE, STDOUT
-from typing import Tuple, Callable, Any, Union, Coroutine, List
+from typing import Tuple, Callable, Any, Union, Coroutine, List, Type
 
-from privex.helpers.common import STRBYTES, byteify, shell_quote
+from privex.helpers.common import byteify, shell_quote
+from privex.helpers.types import T, STRBYTES, NO_RESULT
 import logging
 
 log = logging.getLogger(__name__)
 
 
+__all__ = [
+    'awaitable', 'AWAITABLE_BLACKLIST_MODS', 'AWAITABLE_BLACKLIST', 'AWAITABLE_BLACKLIST_FUNCS', 'run_sync', 'aobject',
+    'call_sys_async', 'async_sync', 'awaitable_class', 'AwaitableMixin', 'loop_run', 'is_async_context',
+]
+
+
 def run_sync(func, *args, **kwargs):
     """
-    Run an async function synchronously (useful for REPL testing async functions)
+    Run an async function synchronously (useful for REPL testing async functions). (TIP: Consider using :func:`.loop_run` instead)
+
+    .. Attention:: For most cases, you should use the function :func:`.loop_run` instead of this. Unlike ``run_sync``, :func:`.loop_run`
+                   is able to handle async function references, coroutines, as well as coroutines / async functions which are wrapped
+                   in an outer non-async function (e.g. an ``@awaitable`` wrapper).
+                   
+                   :func:`.loop_run` also supports using a custom event loop, instead of being limited to :func:`asyncio.get_event_loop`
 
     Usage:
 
@@ -50,13 +64,77 @@ def run_sync(func, *args, **kwargs):
     :param callable func: An asynchronous function to run
     :param args:          Positional arguments to pass to ``func``
     :param kwargs:        Keyword arguments to pass to ``func``
-
     """
     coro = asyncio.coroutine(func)
     future = coro(*args, **kwargs)
     loop = asyncio.get_event_loop()
     return loop.run_until_complete(future)
     # return asyncio.run(future)
+
+
+def loop_run(coro: Union[Coroutine, Type[Coroutine], Callable], *args, _loop=None, **kwargs) -> Any:
+    """
+    Run the coroutine or async function ``coro`` synchronously, using an AsyncIO event loop.
+    
+    If the keyword argument ``_loop`` isn't specified, it defaults to the loop returned by :func:`asyncio.get_event_loop`
+
+    If ``coro`` doesn't appear to be a coroutine or async function:
+        
+    * If ``coro`` is a normal ``callable`` object e.g. a function, then it'll be called.
+        
+        * If the object returned after calling ``coro(*args, **kwargs)`` **is a co-routine / async func**, then it'll call
+          ``loop_run`` again, passing the object returned from calling it, and returning the result from that recursive call.
+        
+        * If the returned object isn't an async func / co-routine, then the object will be returned as-is.
+        
+    *  Otherwise, ``coro`` will just be returned back to the caller.
+    
+    **Example Usage**
+    
+    First we'll define the async function ``some_func`` to use as an example::
+    
+        >>> async def some_func(x, y):
+        ...     return x + y
+    
+    Option 1 - Call an async function directly with any args/kwargs required, then pass the coroutine returned::
+    
+        >>> loop_run(some_func(3, 4))
+        7
+    
+    Option 2 - Pass a reference to the async function, and pass any required args/kwargs straight to :func:`.loop_run` - the
+    function will be ran with the args/kwargs you provide, then the coroutine ran in an event loop::
+    
+        >>> loop_run(some_func, 10, y=20)    # Opt 2. Pass the async function and include any args/kwargs for the call
+        30
+    
+    
+    :param coro:     A co-routine, or reference to an async function to be ran synchronously
+    :param args:     Any positional arguments to pass to ``coro`` (if it's a function reference and not a coroutine)
+    :param _loop:    (kwarg only!) If passed, will run ``coro`` in this event loop, instead of :func:`asyncio.get_event_loop`
+    :param kwargs:   Any keyword arguments to pass to ``coro`` (if it's a function reference and not a coroutine)
+    
+    :type _loop: asyncio.base_events.BaseEventLoop
+    
+    :return Any coro_result: The returned data from executing the coroutine / async function
+    """
+    if not asyncio.iscoroutinefunction(coro) and not asyncio.iscoroutine(coro):
+        log.debug("Passed 'coro' object isn't a co-routine or async func. Actual type: %s", coro)
+        if callable(coro):
+            log.debug("Passed 'coro' object is a callable. Calling coro object with args: %s // kwargs: %s", args, kwargs)
+            x = coro(*args, **kwargs)
+            if asyncio.iscoroutinefunction(x) or asyncio.iscoroutine(x):
+                log.debug("Call result from 'coro(*args, **kwargs)' is a coro / async func. Re-running loop_run. ")
+                return loop_run(x, *args, _loop=_loop, **kwargs)
+            log.debug("Call result from 'coro(*args, **kwargs)' isn't async func / coro. Returning object: %s ", x)
+            return x
+        log.debug("'coro' object isn't callable. Returning original 'coro' object: %s", coro)
+        return coro
+    
+    loop = _loop
+    if loop is None: loop = asyncio.get_event_loop()
+    if asyncio.iscoroutinefunction(coro): coro = coro(*args, **kwargs)
+    
+    return loop.run_until_complete(coro)
 
 
 def async_sync(f):
@@ -174,6 +252,154 @@ AsyncIO context or not.
 """
 
 
+def is_async_context() -> bool:
+    """Returns ``True`` if currently in an async context, otherwise ``False``"""
+    try:
+        import sniffio
+    except ImportError as e:
+        raise ImportError(f"is_async_context / @awaitable unavailable - 'sniffio' not installed. Exc: {type(e)} {str(e)} ")
+    try:
+        # Detect if we're in async context
+        sniffio.current_async_library()
+        return True
+    except sniffio.AsyncLibraryNotFoundError:
+        return False
+
+
+def _awaitable_blacklisted(skip=3) -> bool:
+    """
+    Returns ``True`` if the caller of the function calling ``_awaitable_blacklisted`` is present in the awaitable
+    blacklists such as :attr:`.AWAITABLE_BLACKLIST` - otherwise ``False`` if they're not blacklisted.
+
+    :param int skip: Scan the caller function this far up the stack
+                     (2 = callee of _awaitable_blacklisted, 3 = callee of callee #2, 4 = callee of #3, 5 = callee of #4 etc.)
+
+    :return bool is_blacklisted: ``True`` if the calling method/module/function is blacklisted, otherwise ``False``.
+    """
+    try:
+        from privex.helpers.black_magic import calling_module, calling_function, caller_name
+        
+        # Exact module + function/method path match
+        if caller_name(skip=skip) in AWAITABLE_BLACKLIST:
+            return True
+        # Plain function name match
+        if calling_function(skip=skip) in AWAITABLE_BLACKLIST_FUNCS:
+            return True
+        
+        _mod = calling_module(skip=skip)
+        # Exact module path match
+        if _mod in AWAITABLE_BLACKLIST_MODS:
+            return True
+        # Sub-modules path match (e.g. if hello.world is blacklisted, then hello.world.example is also blacklisted)
+        for _m in AWAITABLE_BLACKLIST_MODS:
+            if _mod.startswith(_m + '.'):
+                return True
+    
+    except Exception:
+        log.exception("Failed to check blacklist for awaitable function. Falling back to standard async sniffing.")
+    
+    return False
+
+
+class AwaitableMixin:
+    def __getattribute__(self, item):
+        a = object.__getattribute__(self, item)
+        
+        if not inspect.iscoroutinefunction(a) and not inspect.iscoroutine(a): return a
+
+        def _wrp(*args, **kwargs):
+            return a if is_async_context() and not _awaitable_blacklisted() else loop_run(a, *args, **kwargs)
+
+        return _wrp
+
+
+def awaitable_class(cls: Type[T]) -> Type[T]:
+    """
+    Wraps a class, allowing all async methods to be used in non-async code as if they were normal synchronous methods.
+    
+    **Example Usage**
+    
+    Simply decorate your class with ``@awaitable_class`` (no brackets! takes no arguments), and once you create an instance of your
+    class, all of your async methods can be used by synchronous code as-if they were plain functions::
+    
+        >>> from privex.helpers import awaitable_class
+        >>>
+        >>> @awaitable_class
+        >>> class ExampleAsyncCls:
+        >>>     async def example_async(self):
+        >>>         return "hello async world"
+        >>>
+        >>>     def example_sync(self):
+        >>>         return "hello non-async world"
+        >>>
+    
+    NOTE - You can also wrap a class without using a decorator - just pass the class as the first argument like so::
+        
+        >>> class _OtherExample:
+        ...     async def hello(self):
+        ...         return 'world'
+        >>> OtherExample = awaitable_class(_OtherExample)
+    
+    If we call ``.example_async()`` on the above class from a synchronous REPL, it will return ``'hello async world'`` as if it were a
+    normal synchronous method. We can also call the non-async ``.example_sync()`` which works like normal::
+    
+        >>> k = ExampleAsyncCls()
+        >>> k.example_async()
+        'hello async world'
+        >>> k.example_sync()
+        'hello non-async world'
+    
+    However, inside of an async context (e.g. an async function), ``awaitable_class`` will be returning coroutines, so you should
+    ``await`` the methods, as you would expect when dealing with an async function::
+        
+        >>> async def test_async():
+        >>>     exmp = ExampleAsyncCls()
+        >>>     return await exmp.example_async()
+        >>>
+        >>> await test_async()
+        'hello async world'
+
+        
+    :param type cls: The class to wrap
+    :return type wrapped_class: The class after being wrapped
+    """
+    cls: Type[object]
+    
+    class _AwaitableClass(cls):
+        __AWAITABLE_CLS = True
+        """
+        This sub-class is modified to appear as if it were the original class being sub-classed, unfortunately this means
+        it would be difficult to check whether or not a class has been wrapped with _AwaitableClass.
+        
+        To allow you to check whether or not a class has been sub-classed by _AwaitableClass, this class private attribute
+        is present on the returned class and any instances of it.
+        """
+        
+        def __getattribute__(self, item):
+            a: Union[Coroutine, callable, Any] = super().__getattribute__(item)
+            cls_name = super().__getattribute__('__class__').__name__
+            # full_attr = f"{self.__class__.__name__}.{item}"
+            full_attr = f"{cls_name}.{item}"
+            if not inspect.iscoroutinefunction(a) and not inspect.iscoroutine(a):
+                log.debug("Attribute %s is not a coroutine or coro function. Returning normally.", full_attr)
+                return a
+            # return awaitable(a) if inspect.iscoroutinefunction(a) else a
+            
+            def _wrp(*args, **kwargs):
+                if is_async_context() and not _awaitable_blacklisted():
+                    log.debug("Currently in async context. Returning %s as coroutine", full_attr)
+                    return a(*args, **kwargs)
+                log.debug("Not in async context or attribute is blacklisted. Returning %s as coroutine", full_attr)
+                return loop_run(a, *args, **kwargs)
+            return _wrp
+    
+    _AwaitableClass.__name__ = cls.__name__
+    _AwaitableClass.__qualname__ = cls.__qualname__
+    _AwaitableClass.__module__ = cls.__module__
+    
+    return _AwaitableClass
+
+
 def awaitable(func: Callable) -> Callable:
     """
     Decorator which helps with creation of async wrapper functions.
@@ -236,44 +462,20 @@ def awaitable(func: Callable) -> Callable:
     def wrapper(*args: Any, **kwargs: Any) -> Union[Any, Coroutine[Any, Any, Any]]:
         coroutine = func(*args, **kwargs)
 
-        # The wrapped function isn't a coroutine function, nor a coroutine. This may be caused by an adapter wrapper class which deals
-        # with both synchronous and asynchronous adapters.
+        # The wrapped function isn't a coroutine function, nor a coroutine. This may be caused by an adapter
+        # wrapper class which deals with both synchronous and asynchronous adapters.
         # Since it doesn't appear to be a coroutine, just return the result.
         if not asyncio.iscoroutinefunction(coroutine) and not asyncio.iscoroutine(coroutine):
             return coroutine
 
-        try:
-            from privex.helpers.black_magic import calling_module, calling_function, caller_name
+        # Always run the coroutine in an event loop if the caller function is blacklisted in the AWAITABLE_BLACKLIST* lists
+        if _awaitable_blacklisted():
+            return asyncio.get_event_loop().run_until_complete(coroutine)
             
-            if caller_name() in AWAITABLE_BLACKLIST:
-                return asyncio.get_event_loop().run_until_complete(coroutine)
-            elif calling_function() in AWAITABLE_BLACKLIST_FUNCS:
-                return asyncio.get_event_loop().run_until_complete(coroutine)
-            else:
-                _mod = calling_module()
-                if _mod in AWAITABLE_BLACKLIST_MODS:
-                    return asyncio.get_event_loop().run_until_complete(coroutine)
-                for _m in AWAITABLE_BLACKLIST_MODS:
-                    if not _m.startswith(_mod + '.'):
-                        continue
-                    return asyncio.get_event_loop().run_until_complete(coroutine)
-        except Exception:
-            log.exception("Failed to check blacklist for awaitable function. Falling back to standard async sniffing.")
-            
-        try:
-            import sniffio
-        except ImportError as e:
-            raise ImportError(f"Decorator @awaitable unavailable - 'sniffio' not installed. Exc: {type(e)} {str(e)} ")
-        try:
-            # Detect if we're in async context
-            sniffio.current_async_library()
-        except sniffio.AsyncLibraryNotFoundError:
-            # Not in async context, run coroutine in event loop.
-            loop = asyncio.get_event_loop()
-            return loop.run_until_complete(coroutine)
-        else:
-            # We're in async context, return the coroutine for await usage
+        if is_async_context():           # We're in async context, return the coroutine for await usage
             return coroutine
+        loop = asyncio.get_event_loop()  # Not in async context, run coroutine in event loop.
+        return loop.run_until_complete(coroutine)
     
     return wrapper
 

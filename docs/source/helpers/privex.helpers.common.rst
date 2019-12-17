@@ -53,16 +53,10 @@ Attributes
    .. autosummary::
       :toctree: common
 
-      T
-      K
-      V
-      C
-      CL
       SAFE_CHARS
       ALPHANUM
       IS_XARGS
       IS_XKWARGS
-      USE_ORIG_VAR
       T_PARAM
       T_PARAM_DICT
       T_PARAM_LIST
