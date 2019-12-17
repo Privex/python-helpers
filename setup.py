@@ -76,7 +76,7 @@ setup(
     ],
     cmdclass=extra_commands,
     extras_require=extras_require(extensions),
-    packages=find_packages(exclude=['tests', 'test.*']),
+    packages=find_packages(exclude=['tests', 'tests.*', 'test.*']),
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",
