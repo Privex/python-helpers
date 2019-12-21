@@ -10,6 +10,7 @@ privex.helpers.common
 
       byteify
       call_sys
+      camel_to_snake
       chunked
       construct_dict
       dec_round

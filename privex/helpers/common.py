@@ -653,6 +653,30 @@ class ErrHelpParser(argparse.ArgumentParser):
         sys.exit(2)
 
 
+first_cap_re = re.compile('(.)([A-Z][a-z]+)')
+all_cap_re = re.compile('([a-z0-9])([A-Z])')
+
+
+def camel_to_snake(name: STRBYTES) -> str:
+    """
+    Convert ``name`` from camel case (``HelloWorld``) to snake case (``hello_world``).
+    
+    ``name`` can be either a ``str`` or ``bytes``.
+    
+    Example::
+    
+        >>> camel_to_snake("HelloWorldLoremIpsum")
+        'hello_world_lorem_ipsum'
+    
+    
+    :param str|bytes name: A camel case (class style) name, e.g. ``HelloWorld``
+    :return str snake_case: ``name`` converted to snake case ``hello_world``
+    """
+
+    s1 = first_cap_re.sub(r'\1_\2', stringify(name))
+    return all_cap_re.sub(r'\1_\2', s1).lower()
+
+
 def human_name(class_name: Union[str, bytes, callable, Type[object]]) -> str:
     """
     This function converts a class/function name into a Title Case name. It also directly accepts classes/functions.
