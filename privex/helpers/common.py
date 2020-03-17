@@ -23,6 +23,7 @@ Common functions and classes that don't fit into a specific category
 """
 import inspect
 import math
+import os
 import random
 import re
 import shlex
@@ -35,7 +36,7 @@ from collections import OrderedDict
 from decimal import Decimal, getcontext
 from os import getenv as env
 from subprocess import PIPE, STDOUT
-from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional
+from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional, BinaryIO, Generator
 
 from privex.helpers import settings
 
@@ -49,8 +50,6 @@ SAFE_CHARS = 'abcdefhkmnprstwxyz23456789ACDEFGHJKLMNPRSTWXYZ'
 
 ALPHANUM = string.ascii_uppercase + string.digits + string.ascii_lowercase
 """All characters from a-z, A-Z, and 0-9 - for random strings where there's no risk of user font confusion"""
-
-
 
 
 def random_str(size: int = 50, chars: Sequence = SAFE_CHARS) -> str:
@@ -116,9 +115,6 @@ def empty(v, zero: bool = False, itr: bool = False) -> bool:
         if hasattr(v, '__len__') and len(v) == 0: return True
 
     return False
-
-
-
 
 
 def empty_if(v: V, is_empty: K = None, not_empty: T = USE_ORIG_VAR, **kwargs) -> Union[T, K, V]:
@@ -757,8 +753,6 @@ def human_name(class_name: Union[str, bytes, callable, Type[object]]) -> str:
     return ''.join(new_name).strip()
 
 
-
-
 def shell_quote(*args: str) -> str:
     """
     Takes command line arguments as positional args, and properly quotes each argument to make it safe to
@@ -828,6 +822,146 @@ def call_sys(proc, *args, write: STRBYTES = None, **kwargs) -> Tuple[bytes, byte
     handle = subprocess.Popen(args, stdout=stdout, stderr=stderr, stdin=stdin, **kwargs)
     stdout, stderr = handle.communicate(input=byteify(write)) if write is not None else handle.communicate()
     return stdout, stderr
+
+
+def reverse_io(f: BinaryIO, blocksize: int = 4096) -> Generator[bytes, None, None]:
+    """
+    Read file as series of blocks from end of file to start.
+
+    The data itself is in normal order, only the order of the blocks is reversed.
+    ie. "hello world" -> ["ld","wor", "lo ", "hel"]
+    Note that the file must be opened in binary mode.
+
+    Original source: https://stackoverflow.com/a/136354
+    """
+    if 'b' not in f.mode.lower():
+        raise Exception("File must be opened using binary mode.")
+    size = os.stat(f.name).st_size
+    fullblocks, lastblock = divmod(size, blocksize)
+    
+    # The first(end of file) block will be short, since this leaves
+    # the rest aligned on a blocksize boundary.  This may be more
+    # efficient than having the last (first in file) block be short
+    f.seek(-lastblock, 2)
+    yield f.read(lastblock)
+    
+    for i in range(fullblocks - 1, -1, -1):
+        f.seek(i * blocksize)
+        yield f.read(blocksize)
+
+
+def io_tail(f: BinaryIO, nlines: int = 20, bsz: int = 4096) -> Generator[List[str], None, None]:
+    """
+    NOTE: If you're only loading a small amount of lines, e.g. less than 1MB, consider using the much easier :func:`.tail`
+          function - it only requires one call and returns the lines as a singular, correctly ordered list.
+    
+    This is a generator function which works similarly to ``tail`` on UNIX systems. It efficiently retrieves lines in reverse order using
+    the passed file handle ``f``.
+    
+    WARNING: This function is a generator which returns "chunks" of lines - while the lines within each chunk are in the correct order,
+    the chunks themselves are backwards, i.e. each chunk retrieves lines prior to the previous chunk.
+    
+    This function was designed as a generator to allow for **memory efficient handling of large files**, and tailing large amounts of lines.
+    It only loads ``bsz`` bytes from the file handle into memory with each iteration, allowing you to process each chunk of lines as
+    they're read from the file, instead of having to load all ``nlines`` lines into memory at once.
+    
+    To ensure your retrieved lines are in the correct order, with each iteration you must PREPEND the outputted chunk to your final result,
+    rather than APPEND. Example::
+     
+        >>> from privex.helpers import io_tail
+        >>> lines = []
+        >>> with open('/tmp/example', 'rb') as fp:
+        ...     # We prepend each chunk from 'io_tail' to our result variable 'lines'
+        ...     for chunk in io_tail(fp, nlines=10):
+        ...         lines = chunk + lines
+        >>> print('\\n'.join(lines))
+
+    Modified to be more memory efficient, but originally based on this SO code snippet: https://stackoverflow.com/a/136354
+
+    :param BinaryIO f: An open file handle for the file to tail, must be in **binary mode** (e.g. ``rb``)
+    :param int nlines: Total number of lines to retrieve from the end of the file
+    :param int bsz:    Block size (in bytes) to load with each iteration (default: 4096 bytes). DON'T CHANGE UNLESS YOU
+                       UNDERSTAND WHAT THIS MEANS.
+    :return Generator chunks: Generates chunks (in reverse order) of correctly ordered lines as ``List[str]``
+    """
+    buf = ''
+    lines_read = 0
+    # Load 4096 bytes at a time, from file handle 'f' in reverse
+    for block in reverse_io(f, blocksize=int(bsz)):
+        # Incase we had a partial line during our previous iteration, we append leftover bytes from
+        # the previous iteration to the end of the newly loaded block
+        buf = stringify(block) + buf
+        lines = buf.splitlines()
+    
+        # Return all lines except the first (since may be partial)
+        if lines:
+            # First line may not be complete, since we're loading blocks from the bottom of the file.
+            # We yield from line 2 onwards, storing line 1 back into 'buf' to be appended to the next block.
+            result = lines[1:]
+            res_lines = len(result)
+        
+            # If we've retrieved enough lines to meet the requested 'nlines', then we just calculate how many
+            # more lines the caller wants, yield them, then return to finish execution.
+            if (lines_read + res_lines) >= nlines:
+                rem_lines = nlines - lines_read
+                lines_read += rem_lines
+                yield result[-rem_lines:]
+                return
+        
+            # Yield the lines we've loaded so far
+            if res_lines > 0:
+                lines_read += res_lines
+                yield result
+        
+            # Replace the buffer with the discarded 1st line from earlier.
+            buf = lines[0]
+    # If the loop is broken, it means we've probably reached the start of the file, and we're missing the first line...
+    # Thus we have to yield the buffer, which should contain the first line of the file.
+    yield [buf]
+
+
+def tail(filename: str, nlines: int = 20, bsz: int = 4096) -> List[str]:
+    """
+    Pure python equivalent of the UNIX ``tail`` command. Simply pass a filename and the number of lines you want to load
+    from the end of the file, and a ``List[str]`` of lines (in forward order) will be returned.
+    
+    This function is simply a wrapper for the highly efficient :func:`.io_tail`, designed for usage with a small (<10,000) amount
+    of lines to be tailed. To allow for the lines to be returned in the correct order, it must load all ``nlines`` lines into memory
+    before it can return the data.
+    
+    If you need to ``tail`` a large amount of data, e.g. 10,000+ lines of a logfile, you should consider using the lower level
+    function :func:`.io_tail` - which acts as a generator, only loading a certain amount of bytes into memory per iteration.
+    
+    Example file ``/tmp/testing``::
+        
+        this is an example 1
+        this is an example 2
+        this is an example 3
+        this is an example 4
+        this is an example 5
+        this is an example 6
+    
+    Example usage::
+    
+        >>> from privex.helpers import tail
+        >>> lines = tail('/tmp/testing', nlines=3)
+        >>> print("\\n".join(lines))
+        this is an example 4
+        this is an example 5
+        this is an example 6
+    
+    
+    :param str filename: Path to file to tail. Relative or absolute path. Absolute path is recommended for safety.
+    :param int nlines:   Total number of lines to retrieve from the end of the file
+    :param int bsz:      Block size (in bytes) to load with each iteration (default: 4096 bytes). DON'T CHANGE UNLESS YOU
+                         UNDERSTAND WHAT THIS MEANS.
+    :return List[str] lines: The last 'nlines' lines of the file 'filename' - in forward order.
+    """
+    res = []
+    with open(filename, 'rb') as fp:
+        for chunk in io_tail(f=fp, nlines=nlines, bsz=bsz):
+            res = chunk + res
+    return res
 
 
 IS_XARGS = re.compile('^\*([a-zA-Z0-9_])+$')

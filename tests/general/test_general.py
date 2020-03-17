@@ -22,12 +22,15 @@ General test cases for various un-categorized functions / classes e.g. :py:func:
 
 
 """
-
+import os
 from os import path, makedirs
-from tempfile import TemporaryDirectory, NamedTemporaryFile
-from typing import Union
+from tempfile import TemporaryDirectory, NamedTemporaryFile, mkstemp
+from typing import Union, Tuple, List, TextIO, BinaryIO
 from privex import helpers
 from tests import PrivexBaseCase
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class TestGeneral(PrivexBaseCase):
@@ -308,4 +311,99 @@ class TestGeneral(PrivexBaseCase):
     
         self.assertTrue(isinstance(extracted, dict))
         self.assertEqual(len(extracted.keys()), 0)
+
+    def _create_test_file(self, tfile: BinaryIO, nlines=10) -> List[str]:
+        """Helper function for populating a testing temp file with numbered example lines for comparison"""
+        lines = [f"This is an example line {i}\n".encode('utf-8') for i in range(1, nlines+1)]
+        tfile.writelines(lines)
+        tfile.flush()
+        return [l.decode().strip("\n") for l in lines]
+
+    def test_io_tail_500_lines_300(self):
+        """
+        Test :func:`.io_tail` by tailing 300 lines of a 500 line file, then comparing each line from generated chunks against the
+        original lines written to the file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = self._create_test_file(tfile, 500)
+            
+            i = -1  # Position -1 is the last line in the ``lines`` list
+            for chunk in helpers.io_tail(tfile, 300):
+                # We reverse each chunk, so that we can cleanly compare last lines -> first lines
+                chunk.reverse()
+                # We lower i by 1 for each line in the chunk, so we're reading ``lines`` backwards, while reading the reversed ``chunk``
+                # from the last line until the first line of the chunk.
+                for l in chunk:
+                    self.assertEqual(l, lines[i], msg=f"l == lines[{i}] // '{l}' == '{lines[i]}'")
+                    i -= 1
+            # Since the last line of ``lines`` was -1 instead of -0, the final iteration should result in -301
+            self.assertEqual(i, -301)
+
+    def test_tail_10_lines_3(self):
+        """
+        Test :func:`.tail` by comparing the last 3 lines of a 10 line testing file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = self._create_test_file(tfile, 10)
+            
+            tailed = helpers.tail(tfile.name, 3)
+            self.assertEqual(len(tailed), 3)
+            self.assertEqual(tailed[0], "This is an example line 8")
+            self.assertEqual(tailed[1], "This is an example line 9")
+            self.assertEqual(tailed[2], "This is an example line 10")
+
+    def test_tail_10_lines_5(self):
+        """
+        Test :func:`.tail` by comparing the first and last tailed 5 lines of a 10 line testing file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = self._create_test_file(tfile, 10)
+        
+            tailed = helpers.tail(tfile.name, 5)
+            self.assertEqual(len(tailed), 5)
+            self.assertEqual(tailed[0], lines[-5])
+            self.assertEqual(tailed[4], lines[-1])
+
+    def test_tail_10_lines_10(self):
+        """
+        Test :func:`.tail` works when ``nlines`` is equal to the amount of lines in the file. We tail 10 lines of a 10 line test file,
+        then compare all 10 original lines against the output from tail.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = self._create_test_file(tfile, 10)
+        
+            tailed = helpers.tail(tfile.name, 10)
+            self.assertEqual(len(tailed), 10)
+            for i, l in enumerate(lines):
+                self.assertEqual(tailed[i], lines[i], msg=f"tailed[{i}] == lines[{i}] // '{tailed[i]}' == '{lines[i]}'")
+
+    def test_tail_500_lines_20(self):
+        """
+        Test :func:`.tail` with a larger test file. Tailing 20 lines of a 500 line test file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = self._create_test_file(tfile, 500)
+            
+            tailed = helpers.tail(tfile.name, 20)
+            self.assertEqual(len(tailed), 20)
+            # Compare the last 20 lines from ``lines``, against ``tailed`` starting from position 0
+            i = 0
+            for l in lines[480:]:
+                self.assertEqual(tailed[i], l, msg=f"tailed[i] == l // '{tailed[i]}' == '{l}'")
+                i += 1
+
+    def test_tail_500_lines_300(self):
+        """
+        Test :func:`.tail` with a larger line count. Tailing 300 lines of a 500 line test file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = self._create_test_file(tfile, 500)
+        
+            tailed = helpers.tail(tfile.name, 300)
+            self.assertEqual(len(tailed), 300)
+            # Compare the last 300 lines from ``lines``, against ``tailed`` starting from position 0
+            i = 0
+            for l in lines[200:]:
+                self.assertEqual(tailed[i], l, msg=f"tailed[i] == l // '{tailed[i]}' == '{l}'")
+                i += 1
 
