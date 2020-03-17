@@ -55,21 +55,22 @@ class TestNet(PrivexBaseCase):
         except helpers.NetworkUnreachable as e:
             return pytest.skip(f"Skipping test TestGeneral.test_ping_v6 as network is unavailable: \"{str(e)}\"")
 
-    def _check_asn(self, asn, expected_name):
+    def _check_asn(self, asn, *expected_names):
         if not HAS_DNSPYTHON:
             return pytest.skip(f"Skipping asn_to_name tests as dnspython is not installed...")
         name = helpers.asn_to_name(asn)
-        self.assertEqual(name, expected_name, msg=f"asn_to_name({asn}) '{name}' == '{expected_name}'")
+        expected_names = list(expected_names)
+        self.assertIn(name, expected_names, msg=f"asn_to_name({asn}) '{name}' in: {expected_names}")
     
     @pytest.mark.skipif(not HAS_DNSPYTHON, reason="test_asn_to_name_int requires package 'dnspython'")
     def test_asn_to_name_int(self):
         """Test Privex's ASN (as an int) 210083 resolves to 'PRIVEX, SE'"""
-        self._check_asn(210083, 'PRIVEX, SE')
+        self._check_asn(210083, 'PRIVEX, SE', 'PRIVEX INC, SE', 'Privex Inc, SE')
 
     @pytest.mark.skipif(not HAS_DNSPYTHON, reason="test_asn_to_name_str requires package 'dnspython'")
     def test_asn_to_name_str(self):
         """Test Cloudflare's ASN (as a str) '13335' resolves to 'CLOUDFLARENET - Cloudflare, Inc., US'"""
-        self._check_asn('13335', 'CLOUDFLARENET - Cloudflare, Inc., US')
+        self._check_asn('13335', 'CLOUDFLARENET - Cloudflare, Inc., US', 'CLOUDFLARENET, US')
 
     @pytest.mark.skipif(not HAS_DNSPYTHON, reason="test_asn_to_name_erroneous requires package 'dnspython'")
     def test_asn_to_name_erroneous(self):
