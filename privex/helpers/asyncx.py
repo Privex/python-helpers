@@ -28,7 +28,7 @@ import asyncio
 import inspect
 import warnings
 from asyncio.subprocess import PIPE, STDOUT
-from typing import Tuple, Callable, Any, Union, Coroutine, List, Type
+from typing import Tuple, Callable, Any, Union, Coroutine, List, Type, Awaitable
 
 from privex.helpers.common import byteify, shell_quote
 from privex.helpers.types import T, STRBYTES, NO_RESULT
@@ -39,7 +39,8 @@ log = logging.getLogger(__name__)
 
 __all__ = [
     'awaitable', 'AWAITABLE_BLACKLIST_MODS', 'AWAITABLE_BLACKLIST', 'AWAITABLE_BLACKLIST_FUNCS', 'run_sync', 'aobject',
-    'call_sys_async', 'async_sync', 'awaitable_class', 'AwaitableMixin', 'loop_run', 'is_async_context',
+    'call_sys_async', 'async_sync', 'awaitable_class', 'AwaitableMixin', 'loop_run', 'is_async_context', 'await_if_needed',
+    'get_async_type',
 ]
 
 
@@ -230,6 +231,72 @@ async def call_sys_async(proc, *args, write: STRBYTES = None, **kwargs) -> Tuple
     c = await handle.communicate(input=byteify(write)) if write is not None else await handle.communicate()
     stdout, stderr = c
     return stdout, stderr
+
+
+async def await_if_needed(func: Union[callable, Coroutine, Awaitable, Any], *args, **kwargs):
+    """
+    Call, await, and/or simply return ``func`` depending on whether it's an async function reference (coroutine function),
+    a non-awaited coroutine, a standard synchronous function, or just a plain old string.
+    
+    Helps take the guess work out of parameters which could be a string, a synchronous function, an async function, or
+    a coroutine which hasn't been awaited.
+    
+        >>> def sync_func(hello, world=1):
+        ...     return f"sync hello: {hello} {world}"
+        >>> async def async_func(hello, world=1):
+        ...     return f"async hello: {hello} {world}"
+        >>> await await_if_needed(sync_func, 3, world=2)
+        'sync hello: 3 2'
+        >>> await await_if_needed(async_func, 5, 4)
+        'async hello: 5 4'
+        >>> f = async_func(5, 4)
+        >>> await await_if_needed(f)
+        'async hello: 5 4'
+    
+    :param callable|Coroutine|Awaitable|Any func: The function/object to await/call if needed.
+    :param args: If ``func`` is a function/method, will forward any positional arguments to the function
+    :param kwargs: If ``func`` is a function/method, will forward any keyword arguments to the function
+    :return Any func_data: The result of the awaited ``func``, or the original ``func`` if not a coroutine nor callable/awaitable
+    """
+    as_type = get_async_type(func)
+    f = func
+    
+    if as_type == 'coro func':
+        f = await func(*args, **kwargs)
+    elif as_type in ['coro', 'awaitable']:
+        return await func
+    elif as_type == 'sync func':
+        f = func(*args, **kwargs)
+    
+    if isinstance(f, Awaitable):
+        return await f
+    return f
+
+
+def get_async_type(obj) -> str:
+    """
+    Detects if ``obj`` is an async object/function that needs awaited / called, whether it's a synchronous callable,
+    or whether it's unknown (probably not async)
+    
+        >>> def sync_func(hello, world=1): return f"sync hello: {hello} {world}"
+        >>> async def async_func(hello, world=1): return f"async hello: {hello} {world}"
+        >>> get_async_type(async_func)
+        'coro func'
+        >>> get_async_type(async_func(5))
+        'coro'
+        >>> get_async_type(sync_func)
+        'sync func'
+        >>> get_async_type(sync_func(10))
+        'unknown'
+    
+    :param Any obj: Object to check for async type
+    :return str async_type: Either ``'coro func'``, ``'coro'``, ``'awaitable'``, ``'sync func'`` or ``'unknown'``
+    """
+    if asyncio.iscoroutinefunction(obj): return "coro func"
+    if asyncio.iscoroutine(obj): return "coro"
+    if isinstance(obj, Awaitable): return "awaitable"
+    if callable(obj): return "sync func"
+    return "unknown"
 
 
 AWAITABLE_BLACKLIST_FUNCS: List[str] = []

@@ -31,6 +31,7 @@ from typing import Any, Union, List
 
 from privex.helpers.cache import cached
 from privex.helpers.common import empty, is_true
+from privex.helpers.asyncx import await_if_needed
 
 DEF_RETRY_MSG = "Exception while running '%s', will retry %d more times."
 DEF_FAIL_MSG = "Giving up after attempting to retry function '%s' %d times."
@@ -318,6 +319,7 @@ def async_retry(max_retries: int = 3, delay: Union[int, float] = 3, **retry_conf
     
     return _decorator
 
+
 class FormatOpt(Enum):
     """
     This enum represents various options available for :py:func:`.r_cache` 's ``format_opt`` parameter.
@@ -354,6 +356,118 @@ class FormatOpt(Enum):
 
 
 FO = FormatOpt
+
+
+def _format_key(args, kwargs, cache_key: str, whitelist: bool = True, fmt_opt: FO = FO.POS_AUTO, fmt_args: list = None):
+    """Internal function used by :func:`.r_cache` and :func:`.r_cache_async` for formatting a cache key e.g. ``pvx:{}:{}``"""
+    pos_args = args
+    kw_args = kwargs
+    if whitelist:
+        # Whitelisted positional arguments
+        pos_args = [args[i] for i in fmt_args if type(i) is int and len(args) > i]
+        # Whitelisted keyword args, as a dict
+        kw_args = {i: kwargs[i] for i in fmt_args if type(i) is str and i in kwargs}
+    
+    if fmt_opt == FormatOpt.POS_AUTO:
+        log.debug('Format: POS_AUTO - Formatting with *args, fallback on err to positional **kwargs values')
+        try:
+            log.debug('Attempting to format with args: %s', pos_args)
+            rk = cache_key.format(*pos_args)
+        except (KeyError, IndexError):
+            pos_kwargs = [v for _, v in kw_args.items()]
+            log.debug('Failed to format with pos args, now trying positional kwargs: %s', pos_kwargs)
+            rk = cache_key.format(*pos_kwargs)
+        return rk
+    
+    if fmt_opt == FormatOpt.KWARG_ONLY:  # Only attempt to format cache_key using kwargs
+        log.debug('Format: KWARG_ONLY - Formatting using only **kwargs')
+        return cache_key.format(**kw_args)
+    
+    if fmt_opt == FormatOpt.POS_ONLY:  # Only attempt to format cache_key using positional args
+        log.debug('Format: POS_ONLY - Formatting using only *args')
+        return cache_key.format(*pos_args)
+    
+    if fmt_opt == FormatOpt.MIX:  # Format cache_key with both positional and kwargs as-is
+        log.debug('Format: MIX - Formatting using passthru *args and **kwargs')
+        return cache_key.format(*pos_args, **kw_args)
+
+
+def r_cache_async(cache_key: Union[str, callable], cache_time=300, format_args: list = None, format_opt: FO = FO.POS_AUTO, **opts) -> Any:
+    """
+    Async function/method compatible version of :func:`.r_cache` - see docs for :func:`.r_cache`
+    
+    Basic usage::
+    
+        >>> from privex.helpers import r_cache_async
+        >>> @r_cache_async('my_cache_key')
+        >>> async def some_func(some: int, args: int = 2):
+        ...     return some + args
+        >>> await some_func(5, 10)
+        15
+        
+        >>> # If we await some_func a second time, we'll get '15' again because it was cached.
+        >>> await some_func(2, 3)
+        15
+    
+    Async ``cache_key`` generation (you can also use normal synchronous functions/lambdas)::
+    
+        >>> from privex.helpers import r_cache_async
+        >>>
+        >>> async def make_key(name, title):
+        ...     return f"mycache:{name}"
+        ...
+        >>> @r_cache_async(make_key)
+        ... async def who(name, title):
+        ...     return "Their name is {title} {name}"
+        ...
+        
+    :param FormatOpt format_opt: (default: :py:attr:`.FormatOpt.POS_AUTO`) "Format option" - how should args/kwargs be
+                                 used when filling placeholders in the ``cache_key`` (see comments on FormatOption)
+    :param list format_args: A list of positional arguments numbers (e.g. ``[0, 1, 2]``) and/or kwargs
+                             ``['x', 'y', 'z']`` that should be used to format the `cache_key`
+    :param str cache_key: The cache key to store the cached data into, e.g. `mydata`
+    :param int cache_time: The amount of time in seconds to cache the result for (default: 300 seconds)
+    :keyword bool whitelist: (default: ``True``) If True, only use specified arg positions / kwarg keys when formatting
+                             ``cache_key`` placeholders. Otherwise, trust whatever args/kwargs were passed to the func.
+    :return Any res: The return result, either from the wrapped function, or from the cache.
+    """
+    fmt_args = [] if not format_args else format_args
+    r = cached
+    whitelist = opts.get('whitelist', True)
+    
+    def _decorator(f):
+        @functools.wraps(f)
+        async def wrapper(*args, **kwargs):
+            
+            # Extract r_cache and r_cache_key from the wrapped function's kwargs if they're specified,
+            # then remove them from the kwargs so they don't interfere with the wrapped function.
+            enable_cache, rk = kwargs.get('r_cache', True), kwargs.get('r_cache_key', cache_key)
+            if 'r_cache' in kwargs: del kwargs['r_cache']
+            if 'r_cache_key' in kwargs: del kwargs['r_cache_key']
+
+            if not isinstance(rk, str):
+                rk = await await_if_needed(rk, *args, **kwargs)
+            elif not empty(fmt_args, itr=True) or not whitelist:
+                # If the cache key contains a format placeholder, e.g. {somevar} - then attempt to replace the
+                # placeholders using the function's kwargs
+                log.debug('Format_args not empty (or whitelist=False), formatting cache_key "%s"', cache_key)
+                rk = _format_key(args, kwargs, cache_key=cache_key, whitelist=whitelist, fmt_opt=format_opt, fmt_args=format_args)
+            # If using an async cache adapter, r.get might be async...
+            log.debug('Trying to load "%s" from cache', rk)
+            data = await await_if_needed(r.get, rk)
+            
+            if empty(data) or not enable_cache:
+                log.debug('Not found in cache, or "r_cache" set to false. Calling wrapped async function.')
+                data = await await_if_needed(f, *args, **kwargs)
+
+                # If using an async cache adapter, r.get might be async...
+                await await_if_needed(r.set, rk, data, timeout=cache_time)
+            
+            return data
+        
+        return wrapper
+    
+    return _decorator
 
 
 def r_cache(cache_key: Union[str, callable], cache_time=300, format_args: list = None,
@@ -470,51 +584,20 @@ def r_cache(cache_key: Union[str, callable], cache_time=300, format_args: list =
         2019-08-21 06:58:58,611 lg  DEBUG    Not found in cache, or "r_cache" set to false. Calling wrapped function.
         'x + y = 3'
 
-    :param bool whitelist: (default: ``True``) If True, only use specified arg positions / kwarg keys when formatting
-                           ``cache_key`` placeholders. Otherwise, trust whatever args/kwargs were passed to the func.
+
     :param FormatOpt format_opt: (default: :py:attr:`.FormatOpt.POS_AUTO`) "Format option" - how should args/kwargs be
                                  used when filling placeholders in the ``cache_key`` (see comments on FormatOption)
     :param list format_args: A list of positional arguments numbers (e.g. ``[0, 1, 2]``) and/or kwargs
                              ``['x', 'y', 'z']`` that should be used to format the `cache_key`
     :param str cache_key: The cache key to store the cached data into, e.g. `mydata`
     :param int cache_time: The amount of time in seconds to cache the result for (default: 300 seconds)
+    :keyword bool whitelist: (default: ``True``) If True, only use specified arg positions / kwarg keys when formatting
+                             ``cache_key`` placeholders. Otherwise, trust whatever args/kwargs were passed to the func.
     :return Any res: The return result, either from the wrapped function, or from the cache.
     """
     fmt_args = [] if not format_args else format_args
     r = cached
     whitelist = opts.get('whitelist', True)
-
-    def format_key(args, kwargs):
-        pos_args = args
-        kw_args = kwargs
-        if whitelist:
-            # Whitelisted positional arguments
-            pos_args = [args[i] for i in fmt_args if type(i) is int and len(args) > i]
-            # Whitelisted keyword args, as a dict
-            kw_args = {i: kwargs[i] for i in fmt_args if type(i) is str and i in kwargs}
-
-        if format_opt == FormatOpt.POS_AUTO:
-            log.debug('Format: POS_AUTO - Formatting with *args, fallback on err to positional **kwargs values')
-            try:
-                log.debug('Attempting to format with args: %s', pos_args)
-                rk = cache_key.format(*pos_args)
-            except (KeyError, IndexError):
-                pos_kwargs = [v for _, v in kw_args.items()]
-                log.debug('Failed to format with pos args, now trying positional kwargs: %s', pos_kwargs)
-                rk = cache_key.format(*pos_kwargs)
-            return rk
-
-        if format_opt == FormatOpt.KWARG_ONLY:  # Only attempt to format cache_key using kwargs
-            log.debug('Format: KWARG_ONLY - Formatting using only **kwargs')
-            return cache_key.format(**kw_args)
-
-        if format_opt == FormatOpt.POS_ONLY:  # Only attempt to format cache_key using positional args
-            log.debug('Format: POS_ONLY - Formatting using only *args')
-            return cache_key.format(*pos_args)
-
-        if format_opt == FormatOpt.MIX:  # Format cache_key with both positional and kwargs as-is
-            log.debug('Format: MIX - Formatting using passthru *args and **kwargs')
-            return cache_key.format(*pos_args, **kw_args)
 
     def _decorator(f):
         @functools.wraps(f)
@@ -532,7 +615,7 @@ def r_cache(cache_key: Union[str, callable], cache_time=300, format_args: list =
                 # If the cache key contains a format placeholder, e.g. {somevar} - then attempt to replace the
                 # placeholders using the function's kwargs
                 log.debug('Format_args not empty (or whitelist=False), formatting cache_key "%s"', cache_key)
-                rk = format_key(args, kwargs)
+                rk = _format_key(args, kwargs, cache_key=cache_key, whitelist=whitelist, fmt_opt=format_opt, fmt_args=format_args)
             log.debug('Trying to load "%s" from cache', rk)
             data = r.get(rk)
 

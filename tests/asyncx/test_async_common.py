@@ -1,8 +1,10 @@
 import asyncio
 import inspect
+from time import sleep
 from typing import Union, Coroutine, Type, Callable
 
 from privex import helpers
+from privex.helpers import r_cache_async, get_async_type
 from tests import PrivexBaseCase
 import logging
 
@@ -49,6 +51,10 @@ class TestAsyncX(PrivexBaseCase):
 
     async def _tst_async(self, a, b):
         """Basic async function used for testing async code"""
+        return a * 2, b * 3
+
+    def _tst_sync(self, a, b):
+        """Basic sync function used for testing sync code"""
         return a * 2, b * 3
 
     def test_run_sync(self):
@@ -185,3 +191,53 @@ class TestAsyncX(PrivexBaseCase):
             return o.example
         
         self.assertEqual(helpers.run_sync(setup_async_object), "hello world")
+
+    def test_async_cache(self):
+        """Test :func:`.r_cache_async` with an async function"""
+        @r_cache_async('privex_tests:some_func', cache_time=2)
+        async def some_func(some: int, args: int = 2):
+            return some + args
+
+        self.assertEqual(helpers.run_sync(some_func, 5, 10), 15)
+        self.assertEqual(helpers.run_sync(some_func, 10, 20), 15)
+        sleep(2)
+        self.assertEqual(helpers.run_sync(some_func, 10, 30), 40)
+
+    def test_async_cache_key(self):
+        """Test :func:`.r_cache_async` with an async function and async cache key"""
+
+        async def mk_key(some: int, *args, **kwargs):
+            return f'privex_tests:some_func:{some}'
+
+        @r_cache_async(mk_key, cache_time=2)
+        async def some_func(some: int, args: int = 2):
+            return some + args
+    
+        # We cache based on the first argument. If we pass 5,10 and 5,20 then 5,20 should get the cached 5,10 result.
+        self.assertEqual(helpers.run_sync(some_func, 5, 10), 15)
+        self.assertEqual(helpers.run_sync(some_func, 5, 20), 15)
+        # But 10,20 should get an up to date result.
+        self.assertEqual(helpers.run_sync(some_func, 10, 20), 30)
+        sleep(2)
+        # Confirm the cache key for some=5 expired by calling with 5,30
+        self.assertEqual(helpers.run_sync(some_func, 5, 30), 35)
+    
+    def test_async_type_corofunc(self):
+        """Test :func`._tst_async` with a async function reference"""
+        self.assertEqual(get_async_type(self._tst_async), 'coro func')
+
+    def test_async_type_coro(self):
+        """Test :func`._tst_async` with a coroutine (called async function) reference"""
+        a = self._tst_async(1, 2)
+        self.assertEqual(get_async_type(a), 'coro')
+        # close the coroutine just to avoid "never awaited" warnings :)
+        a.close()
+
+    def test_async_type_syncfunc(self):
+        """Test :func`._tst_async` with a standard synchronous function reference"""
+        self.assertEqual(get_async_type(self._tst_sync), 'sync func')
+
+    def test_async_type_unknown(self):
+        """Test :func`._tst_async` with an integer reference"""
+        self.assertEqual(get_async_type(self._tst_sync(1, 2)), 'unknown')
+
