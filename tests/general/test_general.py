@@ -23,6 +23,7 @@ General test cases for various un-categorized functions / classes e.g. :py:func:
 
 """
 import os
+from decimal import Decimal
 from os import path, makedirs
 from tempfile import TemporaryDirectory, NamedTemporaryFile, mkstemp
 from typing import Union, Tuple, List, TextIO, BinaryIO
@@ -407,3 +408,36 @@ class TestGeneral(PrivexBaseCase):
                 self.assertEqual(tailed[i], l, msg=f"tailed[i] == l // '{tailed[i]}' == '{l}'")
                 i += 1
 
+    def test_filter_form_dict1(self):
+        """
+        Test :func:`.filter_form` with a standard dict
+        """
+        
+        x = dict(lorem="hello", ipsum=2, dolor=['world'])
+        y = helpers.filter_form(x, 'lorem', 'dolor')
+        
+        self.assertIn('lorem', y)
+        self.assertIn('dolor', y)
+        self.assertNotIn('ipsum', y)
+        
+        self.assertIsInstance(y['lorem'], str)
+        self.assertIsInstance(y['dolor'], list)
+
+    def test_filter_form_dict_cast(self):
+        """
+        Test :func:`.filter_form` with a dict and auto-casting
+        """
+    
+        x = dict(lorem="1", ipsum=2, dolor="3.14", world="test")
+        y = helpers.filter_form(x, 'lorem', 'ipsum', 'dolor', cast=Decimal)
+    
+        self.assertIn('lorem', y)
+        self.assertIn('ipsum', y)
+        self.assertIn('dolor', y)
+        self.assertNotIn('world', y)
+    
+        self.assertIsInstance(y['lorem'], Decimal)
+        self.assertIsInstance(y['ipsum'], Decimal)
+        self.assertIsInstance(y['dolor'], Decimal)
+        self.assertEqual(y['lorem'], Decimal('1'))
+        self.assertEqual(y['dolor'], Decimal('3.14'))

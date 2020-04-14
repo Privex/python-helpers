@@ -36,7 +36,7 @@ from collections import OrderedDict
 from decimal import Decimal, getcontext
 from os import getenv as env
 from subprocess import PIPE, STDOUT
-from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional, BinaryIO, Generator
+from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional, BinaryIO, Generator, Mapping
 
 from privex.helpers import settings
 
@@ -962,6 +962,34 @@ def tail(filename: str, nlines: int = 20, bsz: int = 4096) -> List[str]:
         for chunk in io_tail(f=fp, nlines=nlines, bsz=bsz):
             res = chunk + res
     return res
+
+
+def filter_form(form: Mapping, *keys, cast: callable = None) -> Dict[str, Any]:
+    """
+    Extract the keys ``keys`` from the dict-like ``form`` if they exist and return a dictionary containing the keys and values found.
+
+    Optionally, if ``cast`` isn't ``None``, then ``cast`` will be called to cast each ``form`` value to the desired type,
+    e.g. ``int``, ``Decimal``, or ``str``.
+
+    Example usage::
+    
+        >>> a = dict(a=1, c=2, d=3)
+        >>> filter_form(a, 'a', 'c', 'e')
+        {'a': 1, 'c': 2}
+        >>> b = dict(lorem=1, ipsum='2', dolor=5.67)
+        >>> filter_form(b, 'lorem', 'ipsum', 'dolor', cast=int)
+        {'lorem': 1, 'ipsum': 2, 'dolor': 5}
+
+
+    :param Mapping form: A dict-like object to extract ``key`` from.
+    :param str|Any keys: One or more keys to extract from ``form``
+    :param callable cast: Cast the value of any extract ``form`` key using this callable
+    :return dict filtered_form: A dict containing the extracted keys and respective values from ``form``
+    """
+    filtered = {k: form[k] for k in keys if k in form}
+    if cast is not None:
+        filtered = {k: cast(v) for k, v in filtered.items()}
+    return filtered
 
 
 IS_XARGS = re.compile('^\*([a-zA-Z0-9_])+$')
