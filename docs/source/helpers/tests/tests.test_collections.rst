@@ -21,6 +21,7 @@ tests.test\_collections
       TestDictObject
       TestDictableNamedtuple
       TestIsNamedTuple
+      TestOrderedDictObject
    
    
 

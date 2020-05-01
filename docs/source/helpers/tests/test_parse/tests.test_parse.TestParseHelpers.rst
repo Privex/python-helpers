@@ -4,7 +4,7 @@ TestParseHelpers
 .. currentmodule:: tests.test_parse
 
 .. autoclass:: TestParseHelpers
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

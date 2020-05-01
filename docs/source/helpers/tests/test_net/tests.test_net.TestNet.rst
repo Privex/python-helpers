@@ -4,7 +4,7 @@ TestNet
 .. currentmodule:: tests.test_net
 
 .. autoclass:: TestNet
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

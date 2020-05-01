@@ -1,14 +1,12 @@
-
-Requirements / distutils "extras" helpers
-=========================================
+privex.helpers.setuppy.common
+=============================
 
 .. automodule:: privex.helpers.setuppy.common
-   :noindex:
+
 
    
    
-Functions
-^^^^^^^^^
+   
    
    
    .. rubric:: Functions
@@ -28,5 +26,6 @@ Functions
    
    
 
+   
    
    

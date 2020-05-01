@@ -4,9 +4,10 @@ BumpCommand
 .. currentmodule:: privex.helpers.setuppy.commands
 
 .. autoclass:: BumpCommand
-   :noindex:
 
-.. automethod:: __init__
+
+   .. automethod:: __init__
+      :noindex:
 
 
 Methods

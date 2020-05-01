@@ -1,5 +1,5 @@
-privex.helpers.cache.update\_timeout
-====================================
+update\_timeout
+===============
 
 .. currentmodule:: privex.helpers.cache
 

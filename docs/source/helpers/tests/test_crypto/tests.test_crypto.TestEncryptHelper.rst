@@ -4,7 +4,7 @@ TestEncryptHelper
 .. currentmodule:: tests.test_crypto
 
 .. autoclass:: TestEncryptHelper
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

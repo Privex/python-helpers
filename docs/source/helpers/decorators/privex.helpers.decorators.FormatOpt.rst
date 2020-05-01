@@ -5,21 +5,25 @@ FormatOpt
 
 .. autoclass:: FormatOpt
 
-   
+
    .. automethod:: __init__
+      :noindex:
 
-   
-   
 
-   
-   
-   .. rubric:: Attributes
 
-   .. autosummary::
-   
-      ~FormatOpt.KWARG_ONLY
-      ~FormatOpt.MIX
-      ~FormatOpt.POS_AUTO
-      ~FormatOpt.POS_ONLY
-   
-   
+
+
+
+Attributes
+^^^^^^^^^^
+
+.. rubric:: Attributes
+
+.. autosummary::
+   :toctree: formatopt
+
+    ~FormatOpt.KWARG_ONLY
+    ~FormatOpt.MIX
+    ~FormatOpt.POS_AUTO
+    ~FormatOpt.POS_ONLY
+

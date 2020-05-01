@@ -4,7 +4,7 @@ TestIPReverseDNS
 .. currentmodule:: tests.test_rdns
 
 .. autoclass:: TestIPReverseDNS
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

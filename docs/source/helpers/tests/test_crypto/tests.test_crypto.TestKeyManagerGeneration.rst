@@ -4,7 +4,7 @@ TestKeyManagerGeneration
 .. currentmodule:: tests.test_crypto
 
 .. autoclass:: TestKeyManagerGeneration
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

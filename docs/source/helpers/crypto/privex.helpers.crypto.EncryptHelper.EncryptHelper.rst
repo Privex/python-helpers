@@ -5,8 +5,9 @@ EncryptHelper
 
 .. autoclass:: EncryptHelper
 
-    .. automethod:: __init__
-       :noindex:
+
+   .. automethod:: __init__
+      :noindex:
 
 
 Methods
@@ -17,15 +18,15 @@ Methods
 .. autosummary::
    :toctree: encrypthelper
 
-   ~EncryptHelper.__init__
-   ~EncryptHelper.decrypt_str
-   ~EncryptHelper.encrypt_str
-   ~EncryptHelper.from_file
-   ~EncryptHelper.from_password
-   ~EncryptHelper.generate_key
-   ~EncryptHelper.get_fernet
-   ~EncryptHelper.is_encrypted
-   ~EncryptHelper.password_key
+    ~EncryptHelper.__init__
+    ~EncryptHelper.decrypt_str
+    ~EncryptHelper.encrypt_str
+    ~EncryptHelper.from_file
+    ~EncryptHelper.from_password
+    ~EncryptHelper.generate_key
+    ~EncryptHelper.get_fernet
+    ~EncryptHelper.is_encrypted
+    ~EncryptHelper.password_key
 
 
 

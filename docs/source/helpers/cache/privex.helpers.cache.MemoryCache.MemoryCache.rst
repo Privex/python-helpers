@@ -5,23 +5,26 @@ MemoryCache
 
 .. autoclass:: MemoryCache
 
+
    .. automethod:: __init__
       :noindex:
 
-   
-   .. rubric:: Methods
 
-   .. autosummary::
-      :toctree: memorycache
-   
-      ~MemoryCache.__init__
-      ~MemoryCache.get
-      ~MemoryCache.get_or_set
-      ~MemoryCache.remove
-      ~MemoryCache.set
-      ~MemoryCache.update_timeout
-   
-   
+Methods
+^^^^^^^
 
-   
-   
+.. rubric:: Methods
+
+.. autosummary::
+   :toctree: memorycache
+
+    ~MemoryCache.get
+    ~MemoryCache.get_or_set
+    ~MemoryCache.remove
+    ~MemoryCache.set
+    ~MemoryCache.update_timeout
+
+
+
+
+

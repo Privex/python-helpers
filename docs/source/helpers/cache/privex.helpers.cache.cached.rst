@@ -1,6 +1,6 @@
-privex.helpers.cache.cached
-===========================
+cached
+======
 
-.. currentmodule:: privex.helpers
+.. currentmodule:: privex.helpers.cache
 
-.. autoattribute:: cache.cached
+.. autodata:: cached

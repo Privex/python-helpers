@@ -15,9 +15,9 @@ privex.helpers.asyncx
       :toctree: asyncx
    
       async_sync
+      await_if_needed
       awaitable
       awaitable_class
-      await_if_needed
       call_sys_async
       get_async_type
       is_async_context
@@ -38,5 +38,6 @@ privex.helpers.asyncx
    
    
 
+   
    
    

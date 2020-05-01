@@ -4,7 +4,7 @@ PrivexBaseCase
 .. currentmodule:: tests.base
 
 .. autoclass:: PrivexBaseCase
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

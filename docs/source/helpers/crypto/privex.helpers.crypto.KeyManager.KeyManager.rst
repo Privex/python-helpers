@@ -5,6 +5,7 @@ KeyManager
 
 .. autoclass:: KeyManager
 
+
    .. automethod:: __init__
       :noindex:
 

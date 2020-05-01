@@ -5,30 +5,36 @@ RedisCache
 
 .. autoclass:: RedisCache
 
-   
+
    .. automethod:: __init__
       :noindex:
-   
-   .. rubric:: Methods
 
-   .. autosummary::
-      :toctree: rediscache
-   
-      ~RedisCache.__init__
-      ~RedisCache.get
-      ~RedisCache.get_or_set
-      ~RedisCache.remove
-      ~RedisCache.set
-      ~RedisCache.update_timeout
-   
-   
 
-   
-   
-   .. rubric:: Attributes
+Methods
+^^^^^^^
 
-   .. autosummary::
-      :toctree: rediscache
-   
-      ~RedisCache.pickle_default
-   
+.. rubric:: Methods
+
+.. autosummary::
+   :toctree: rediscache
+
+    ~RedisCache.__init__
+    ~RedisCache.get
+    ~RedisCache.remove
+    ~RedisCache.set
+    ~RedisCache.update_timeout
+
+
+
+
+
+Attributes
+^^^^^^^^^^
+
+.. rubric:: Attributes
+
+.. autosummary::
+   :toctree: rediscache
+
+    ~RedisCache.pickle_default
+

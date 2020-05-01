@@ -1,12 +1,11 @@
-Automated Python package version bumping
-========================================
+privex.helpers.setuppy.bump
+===========================
 
 .. automodule:: privex.helpers.setuppy.bump
-   :noindex:
+
 
    
-Functions
-^^^^^^^^^
+   
    
    
    
@@ -27,5 +26,6 @@ Functions
    
    
 
+   
    
    

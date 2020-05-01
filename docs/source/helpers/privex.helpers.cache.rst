@@ -1,42 +1,13 @@
-Cache Abstraction Layer
-=======================
-
-**Module:** ``privex.helpers.cache``
-
-Classes
-^^^^^^^
-
-.. autosummary::
-    :toctree: cache
-
-    privex.helpers.cache.CacheAdapter.CacheAdapter
-    privex.helpers.cache.MemoryCache.MemoryCache
-    privex.helpers.cache.RedisCache.RedisCache
-    privex.helpers.cache.asyncx.base
-    privex.helpers.cache.asyncx.AsyncMemoryCache.AsyncMemoryCache
-    privex.helpers.cache.asyncx.AsyncMemcachedCache.AsyncMemcachedCache
-    privex.helpers.cache.asyncx.AsyncRedisCache.AsyncRedisCache
-
-
-Functions
-^^^^^^^^^
+privex.helpers.cache
+====================
 
 .. automodule:: privex.helpers.cache
 
-   .. rubric:: Classes
 
-   .. autosummary::
-      :toctree: cache
-
-      CacheWrapper
-
-
-   .. rubric:: Attributes
-
-   .. autosummary::
-      :toctree: cache
-
-      cached
+   
+   
+   
+   
    
    .. rubric:: Functions
 
@@ -55,7 +26,15 @@ Functions
 
    
    
+   .. rubric:: Classes
+
+   .. autosummary::
+      :toctree: cache
+   
+      CacheWrapper
+   
    
 
+   
    
    

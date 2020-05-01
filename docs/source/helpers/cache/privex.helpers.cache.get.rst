@@ -1,5 +1,5 @@
-privex.helpers.cache.get
-========================
+get
+===
 
 .. currentmodule:: privex.helpers.cache
 

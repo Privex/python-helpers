@@ -1,5 +1,5 @@
-privex.helpers.cache.get\_or\_set
-=================================
+get\_or\_set
+============
 
 .. currentmodule:: privex.helpers.cache
 

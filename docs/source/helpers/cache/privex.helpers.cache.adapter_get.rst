@@ -1,5 +1,5 @@
-privex.helpers.cache.adapter\_get
-=================================
+adapter\_get
+============
 
 .. currentmodule:: privex.helpers.cache
 

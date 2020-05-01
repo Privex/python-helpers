@@ -20,6 +20,7 @@ tests.test\_extras
    
       Example
       TestAttrs
+      TestGit
    
    
 

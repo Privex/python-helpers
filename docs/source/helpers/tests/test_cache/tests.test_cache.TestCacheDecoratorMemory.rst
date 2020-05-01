@@ -4,7 +4,7 @@ TestCacheDecoratorMemory
 .. currentmodule:: tests.test_cache
 
 .. autoclass:: TestCacheDecoratorMemory
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

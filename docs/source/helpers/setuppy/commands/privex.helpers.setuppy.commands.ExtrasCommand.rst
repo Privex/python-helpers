@@ -4,9 +4,10 @@ ExtrasCommand
 .. currentmodule:: privex.helpers.setuppy.commands
 
 .. autoclass:: ExtrasCommand
-   :noindex:
 
-.. automethod:: __init__
+
+   .. automethod:: __init__
+      :noindex:
 
 
 Methods

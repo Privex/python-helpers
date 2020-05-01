@@ -4,7 +4,7 @@ TestKeyManagerSignVerifyEncrypt
 .. currentmodule:: tests.test_crypto
 
 .. autoclass:: TestKeyManagerSignVerifyEncrypt
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

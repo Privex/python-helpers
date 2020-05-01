@@ -4,7 +4,7 @@ TestKeyManagerLoad
 .. currentmodule:: tests.test_crypto
 
 .. autoclass:: TestKeyManagerLoad
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

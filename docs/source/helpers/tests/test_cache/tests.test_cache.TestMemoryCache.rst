@@ -4,7 +4,7 @@ TestMemoryCache
 .. currentmodule:: tests.test_cache
 
 .. autoclass:: TestMemoryCache
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

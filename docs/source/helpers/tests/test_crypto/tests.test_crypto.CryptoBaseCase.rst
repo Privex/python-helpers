@@ -4,7 +4,7 @@ CryptoBaseCase
 .. currentmodule:: tests.test_crypto
 
 .. autoclass:: CryptoBaseCase
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

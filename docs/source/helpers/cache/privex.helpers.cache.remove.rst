@@ -1,5 +1,5 @@
-privex.helpers.cache.remove
-===========================
+remove
+======
 
 .. currentmodule:: privex.helpers.cache
 

@@ -4,7 +4,7 @@ EmptyIter
 .. currentmodule:: tests.base
 
 .. autoclass:: EmptyIter
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:

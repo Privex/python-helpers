@@ -1,15 +1,13 @@
 privex.helpers.collections
 ==========================
 
-
 .. automodule:: privex.helpers.collections
 
 
    
-Module Contents
----------------
    
-
+   
+   
    
    .. rubric:: Functions
 
@@ -25,6 +23,7 @@ Module Contents
    
 
    
+   
    .. rubric:: Classes
 
    .. autosummary::
@@ -33,9 +32,10 @@ Module Contents
       DictObject
       Dictable
       Mocker
-      MockDictObj
+      OrderedDictObject
    
    
 
+   
    
    

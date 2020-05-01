@@ -4,7 +4,7 @@ TestRedisCache
 .. currentmodule:: tests.test_cache
 
 .. autoclass:: TestRedisCache
-   :noindex:
+
 
    .. automethod:: __init__
       :noindex:
@@ -32,4 +32,5 @@ Attributes
 .. autosummary::
    :toctree: testrediscache
 
+    ~TestRedisCache.pytestmark
 

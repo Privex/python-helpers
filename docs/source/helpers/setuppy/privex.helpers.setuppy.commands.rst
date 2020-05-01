@@ -1,8 +1,8 @@
-Distutils / Setup.py Commands
-=============================
+privex.helpers.setuppy.commands
+===============================
 
 .. automodule:: privex.helpers.setuppy.commands
-   :noindex:
+
 
    
    
@@ -23,5 +23,6 @@ Distutils / Setup.py Commands
    
    
 
+   
    
    

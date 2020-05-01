@@ -2,35 +2,38 @@ privex.helpers.decorators
 =========================
 
 .. automodule:: privex.helpers.decorators
-   :noindex:
+
+
+   
+   
+   
    
    
    .. rubric:: Functions
 
    .. autosummary::
       :toctree: decorators
-
-      _format_key
+   
       async_retry
-      async_sync
-      retry_on_err
+      mock_decorator
       r_cache
       r_cache_async
-      mock_decorator
+      retry_on_err
+   
+   
 
-
+   
+   
    .. rubric:: Classes
 
    .. autosummary::
       :toctree: decorators
-
+   
+      FO
       FormatOpt
    
    
 
    
-   
-   
-
    
    

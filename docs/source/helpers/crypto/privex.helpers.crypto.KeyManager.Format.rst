@@ -5,6 +5,7 @@ Format
 
 .. autoclass:: Format
 
+
    .. automethod:: __init__
       :noindex:
 
@@ -17,8 +18,8 @@ Methods
 .. autosummary::
    :toctree: format
 
-   ~Format.__init__
-   ~Format.get_format
+    ~Format.__init__
+    ~Format.get_format
 
 
 
@@ -32,7 +33,7 @@ Attributes
 .. autosummary::
    :toctree: format
 
-   ~Format.encodings
-   ~Format.private_formats
-   ~Format.public_formats
+    ~Format.encodings
+    ~Format.private_formats
+    ~Format.public_formats
 
