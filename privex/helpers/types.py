@@ -1,6 +1,15 @@
+from decimal import Decimal
 from typing import Union, Coroutine, Awaitable, Any, TypeVar, Callable
 
+Number = Union[Decimal, int, float]
+"""Shorter alias for ``Union[Decimal, int, float]``"""
+
+NumberStr = Union[Decimal, int, float, str]
+"""Shorter alias for ``Union[Decimal, int, float, str]``"""
+
 VAL_FUNC_CORO = Union[Any, callable, Coroutine, Awaitable]
+"""Type alias for callable's, coroutine's and awaitable's"""
+
 T = TypeVar('T')
 """Plain generic type variable for use in helper functions"""
 K = TypeVar('K')

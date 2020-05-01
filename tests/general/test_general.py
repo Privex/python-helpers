@@ -34,6 +34,14 @@ import logging
 log = logging.getLogger(__name__)
 
 
+def _create_test_file(tfile: BinaryIO, nlines=10) -> List[str]:
+    """Helper function for populating a testing temp file with numbered example lines for comparison"""
+    lines = [f"This is an example line {i}\n".encode('utf-8') for i in range(1, nlines+1)]
+    tfile.writelines(lines)
+    tfile.flush()
+    return [l.decode().strip("\n") for l in lines]
+
+
 class TestGeneral(PrivexBaseCase):
     """General test cases that don't fit under a specific category"""
     
@@ -176,238 +184,6 @@ class TestGeneral(PrivexBaseCase):
         out = int(out)
         self.assertEqual(out, 11)
     
-    ex_settings = dict(
-        DB_USER='root', DB_PASS='ExamplePass', DB_HOST='localhost', DB_NAME='example_db', FAKE_SETTING='hello',
-        EXAMPLE='world', HELLO_DB='lorem ipsum'
-    )
-    
-    class ExSettingsClass:
-        DB_USER = 'root'
-        DB_PASS = 'ExamplePass'
-        DB_HOST = 'localhost'
-        DB_NAME = 'example_db'
-        FAKE_SETTING = 'hello'
-        EXAMPLE = 'world'
-        HELLO_DB = 'lorem ipsum'
-
-    class ExSettingsInst:
-        def __init__(self):
-            self.db_user = 'root'
-            self.db_pass = 'ExamplePass'
-            self.db_host = 'localhost'
-            self.db_name = 'example_db'
-            self.fake_setting = 'hello'
-            self.example = 'world'
-            self.hello_db = 'lorem ipsum'
-
-    def test_extract_settings_dict(self):
-        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a ``dict``"""
-        ex_settings = self.ex_settings
-        extracted = helpers.extract_settings('DB_', ex_settings)
-        self._compare_settings(ex_settings, extracted)
-
-    def _compare_settings(self, ex_settings: Union[dict, type, object], extracted: dict,
-                          uppercase=False, orig_uppercase=True):
-        """
-        This is a helper method for :func:`.extract_settings` test cases which use :attr:`.ex_settings` or :class:`.ExSettingsClass`,
-        which helps avoid duplicating test case code.
-        
-            * Tests that ``extracted`` is a dictionary
-            * Tests that ``extracted`` contains exactly 4 items
-            * Tests that ``user``, ``pass``, ``host``, and ``name`` (or uppercase versions) are present in ``extracted``, and match the
-              equivalent values on ``ex_settings``.
-        
-        :param ex_settings:    The original settings object which :func:`.extract_settings` was extracting from
-        :param extracted:      The extracted settings dict returned by :func:`.extract_settings`
-        :param uppercase:      If ``True``, check ``extracted`` for ``USER``, ``PASS`` etc. instead of their lowercase versions.
-        :param orig_uppercase: If ``True``, check ``ex_settings`` for ``DB_USER``, ``DB_PASS`` etc. instead of their lowercase versions.
-        """
-        if not isinstance(ex_settings, dict):
-            ex_settings = dict(ex_settings.__dict__)
-        
-        _key_map = (('user', 'db_user',), ('pass', 'db_pass',),
-                    ('host', 'db_host',), ('name', 'db_name',),)
-        e_up, s_up = uppercase, orig_uppercase
-        key_map = [(_ek.upper() if e_up else _ek, _sk.upper() if s_up else _sk) for _ek, _sk in _key_map]
-        
-        self.assertTrue(isinstance(extracted, dict))
-        self.assertEqual(len(extracted.keys()), 4)
-        
-        for _ek, _sk in key_map:
-            self.assertEqual(extracted[_ek], ex_settings[_sk])
-
-    def test_extract_settings_class(self):
-        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class"""
-        extracted = helpers.extract_settings('DB_', self.ExSettingsClass)
-    
-        self._compare_settings(self.ExSettingsClass, extracted)
-
-    def test_extract_settings_class_instance(self):
-        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class instance/object"""
-        inst = self.ExSettingsInst()
-        extracted = helpers.extract_settings('DB_', inst)
-    
-        self._compare_settings(inst, extracted, orig_uppercase=False)
-
-    def test_extract_settings_class_instance_case_sensitive(self):
-        """
-        Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class instance/object (case sensitive)
-        """
-        inst = self.ExSettingsInst()
-        extracted = helpers.extract_settings('db_', inst, _case_sensitive=True)
-    
-        self._compare_settings(inst, extracted, orig_uppercase=False)
-
-    def test_extract_settings_class_instance_case_sensitive_fail(self):
-        """
-        Test :func:`.extract_settings` returns empty dict for ``DB_`` prefixed settings from a class instance
-        (case sensitive)
-        """
-        inst = self.ExSettingsInst()
-        extracted = helpers.extract_settings('DB_', inst, _case_sensitive=True)
-    
-        self.assertTrue(isinstance(extracted, dict))
-        self.assertEqual(len(extracted.keys()), 0)
-
-    def test_extract_settings_modules(self):
-        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a python module"""
-        from privex.helpers import settings as ex_settings
-        
-        keys_ex = [k for k in ex_settings.__dict__.keys() if k[:6] == 'REDIS_']
-        
-        extracted = helpers.extract_settings('REDIS_', ex_settings)
-        self.assertEqual(extracted['db'], ex_settings.REDIS_DB)
-        self.assertEqual(extracted['port'], ex_settings.REDIS_PORT)
-        self.assertEqual(extracted['host'], ex_settings.REDIS_HOST)
-        
-        self.assertEqual(len(extracted.keys()), len(keys_ex))
-
-    def test_extract_settings_case_sensitive(self):
-        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class (case sensitive)"""
-        extracted = helpers.extract_settings('DB_', self.ExSettingsClass, _case_sensitive=True)
-
-        self._compare_settings(self.ExSettingsClass, extracted, uppercase=True)
-
-    def test_extract_settings_case_sensitive_fail(self):
-        """Test :func:`.extract_settings` returns empty dict for ``db_`` prefix from a class (case sensitive)"""
-        extracted = helpers.extract_settings('db_', self.ExSettingsClass, _case_sensitive=True)
-    
-        self.assertTrue(isinstance(extracted, dict))
-        self.assertEqual(len(extracted.keys()), 0)
-
-    def test_extract_settings_case_sensitive_lowercase_keys(self):
-        """
-        Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class
-        (case sensitive + lowercase keys)
-        """
-        extracted = helpers.extract_settings('DB_', self.ExSettingsClass, _case_sensitive=True, _keys_lower=True)
-        self._compare_settings(self.ExSettingsClass, extracted, uppercase=False)
-
-    def test_extract_settings_case_sensitive_lowercase_keys_fail(self):
-        """
-        Test :func:`.extract_settings` returns empty dict for ``db_`` prefixed settings from a class
-        (case sensitive + lowercase keys)
-        """
-        extracted = helpers.extract_settings('db_', self.ExSettingsClass, _case_sensitive=True, _keys_lower=True)
-    
-        self.assertTrue(isinstance(extracted, dict))
-        self.assertEqual(len(extracted.keys()), 0)
-
-    def _create_test_file(self, tfile: BinaryIO, nlines=10) -> List[str]:
-        """Helper function for populating a testing temp file with numbered example lines for comparison"""
-        lines = [f"This is an example line {i}\n".encode('utf-8') for i in range(1, nlines+1)]
-        tfile.writelines(lines)
-        tfile.flush()
-        return [l.decode().strip("\n") for l in lines]
-
-    def test_io_tail_500_lines_300(self):
-        """
-        Test :func:`.io_tail` by tailing 300 lines of a 500 line file, then comparing each line from generated chunks against the
-        original lines written to the file.
-        """
-        with NamedTemporaryFile() as tfile:
-            lines = self._create_test_file(tfile, 500)
-            
-            i = -1  # Position -1 is the last line in the ``lines`` list
-            for chunk in helpers.io_tail(tfile, 300):
-                # We reverse each chunk, so that we can cleanly compare last lines -> first lines
-                chunk.reverse()
-                # We lower i by 1 for each line in the chunk, so we're reading ``lines`` backwards, while reading the reversed ``chunk``
-                # from the last line until the first line of the chunk.
-                for l in chunk:
-                    self.assertEqual(l, lines[i], msg=f"l == lines[{i}] // '{l}' == '{lines[i]}'")
-                    i -= 1
-            # Since the last line of ``lines`` was -1 instead of -0, the final iteration should result in -301
-            self.assertEqual(i, -301)
-
-    def test_tail_10_lines_3(self):
-        """
-        Test :func:`.tail` by comparing the last 3 lines of a 10 line testing file.
-        """
-        with NamedTemporaryFile() as tfile:
-            lines = self._create_test_file(tfile, 10)
-            
-            tailed = helpers.tail(tfile.name, 3)
-            self.assertEqual(len(tailed), 3)
-            self.assertEqual(tailed[0], "This is an example line 8")
-            self.assertEqual(tailed[1], "This is an example line 9")
-            self.assertEqual(tailed[2], "This is an example line 10")
-
-    def test_tail_10_lines_5(self):
-        """
-        Test :func:`.tail` by comparing the first and last tailed 5 lines of a 10 line testing file.
-        """
-        with NamedTemporaryFile() as tfile:
-            lines = self._create_test_file(tfile, 10)
-        
-            tailed = helpers.tail(tfile.name, 5)
-            self.assertEqual(len(tailed), 5)
-            self.assertEqual(tailed[0], lines[-5])
-            self.assertEqual(tailed[4], lines[-1])
-
-    def test_tail_10_lines_10(self):
-        """
-        Test :func:`.tail` works when ``nlines`` is equal to the amount of lines in the file. We tail 10 lines of a 10 line test file,
-        then compare all 10 original lines against the output from tail.
-        """
-        with NamedTemporaryFile() as tfile:
-            lines = self._create_test_file(tfile, 10)
-        
-            tailed = helpers.tail(tfile.name, 10)
-            self.assertEqual(len(tailed), 10)
-            for i, l in enumerate(lines):
-                self.assertEqual(tailed[i], lines[i], msg=f"tailed[{i}] == lines[{i}] // '{tailed[i]}' == '{lines[i]}'")
-
-    def test_tail_500_lines_20(self):
-        """
-        Test :func:`.tail` with a larger test file. Tailing 20 lines of a 500 line test file.
-        """
-        with NamedTemporaryFile() as tfile:
-            lines = self._create_test_file(tfile, 500)
-            
-            tailed = helpers.tail(tfile.name, 20)
-            self.assertEqual(len(tailed), 20)
-            # Compare the last 20 lines from ``lines``, against ``tailed`` starting from position 0
-            i = 0
-            for l in lines[480:]:
-                self.assertEqual(tailed[i], l, msg=f"tailed[i] == l // '{tailed[i]}' == '{l}'")
-                i += 1
-
-    def test_tail_500_lines_300(self):
-        """
-        Test :func:`.tail` with a larger line count. Tailing 300 lines of a 500 line test file.
-        """
-        with NamedTemporaryFile() as tfile:
-            lines = self._create_test_file(tfile, 500)
-        
-            tailed = helpers.tail(tfile.name, 300)
-            self.assertEqual(len(tailed), 300)
-            # Compare the last 300 lines from ``lines``, against ``tailed`` starting from position 0
-            i = 0
-            for l in lines[200:]:
-                self.assertEqual(tailed[i], l, msg=f"tailed[i] == l // '{tailed[i]}' == '{l}'")
-                i += 1
-
     def test_filter_form_dict1(self):
         """
         Test :func:`.filter_form` with a standard dict
@@ -441,3 +217,270 @@ class TestGeneral(PrivexBaseCase):
         self.assertIsInstance(y['dolor'], Decimal)
         self.assertEqual(y['lorem'], Decimal('1'))
         self.assertEqual(y['dolor'], Decimal('3.14'))
+
+
+class TestGeneralExtractSettings(PrivexBaseCase):
+    """Test cases for :func:`.extract_settings`"""
+    ex_settings = dict(
+        DB_USER='root', DB_PASS='ExamplePass', DB_HOST='localhost', DB_NAME='example_db', FAKE_SETTING='hello',
+        EXAMPLE='world', HELLO_DB='lorem ipsum'
+    )
+    
+    class ExSettingsClass:
+        DB_USER = 'root'
+        DB_PASS = 'ExamplePass'
+        DB_HOST = 'localhost'
+        DB_NAME = 'example_db'
+        FAKE_SETTING = 'hello'
+        EXAMPLE = 'world'
+        HELLO_DB = 'lorem ipsum'
+    
+    class ExSettingsInst:
+        def __init__(self):
+            self.db_user = 'root'
+            self.db_pass = 'ExamplePass'
+            self.db_host = 'localhost'
+            self.db_name = 'example_db'
+            self.fake_setting = 'hello'
+            self.example = 'world'
+            self.hello_db = 'lorem ipsum'
+    
+    def test_extract_settings_dict(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a ``dict``"""
+        ex_settings = self.ex_settings
+        extracted = helpers.extract_settings('DB_', ex_settings)
+        self._compare_settings(ex_settings, extracted)
+    
+    def _compare_settings(self, ex_settings: Union[dict, type, object], extracted: dict,
+                          uppercase=False, orig_uppercase=True):
+        """
+        This is a helper method for :func:`.extract_settings` test cases which use :attr:`.ex_settings` or :class:`.ExSettingsClass`,
+        which helps avoid duplicating test case code.
+
+            * Tests that ``extracted`` is a dictionary
+            * Tests that ``extracted`` contains exactly 4 items
+            * Tests that ``user``, ``pass``, ``host``, and ``name`` (or uppercase versions) are present in ``extracted``, and match the
+              equivalent values on ``ex_settings``.
+
+        :param ex_settings:    The original settings object which :func:`.extract_settings` was extracting from
+        :param extracted:      The extracted settings dict returned by :func:`.extract_settings`
+        :param uppercase:      If ``True``, check ``extracted`` for ``USER``, ``PASS`` etc. instead of their lowercase versions.
+        :param orig_uppercase: If ``True``, check ``ex_settings`` for ``DB_USER``, ``DB_PASS`` etc. instead of their lowercase versions.
+        """
+        if not isinstance(ex_settings, dict):
+            ex_settings = dict(ex_settings.__dict__)
+        
+        _key_map = (('user', 'db_user',), ('pass', 'db_pass',),
+                    ('host', 'db_host',), ('name', 'db_name',),)
+        e_up, s_up = uppercase, orig_uppercase
+        key_map = [(_ek.upper() if e_up else _ek, _sk.upper() if s_up else _sk) for _ek, _sk in _key_map]
+        
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 4)
+        
+        for _ek, _sk in key_map:
+            self.assertEqual(extracted[_ek], ex_settings[_sk])
+    
+    def test_extract_settings_class(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class"""
+        extracted = helpers.extract_settings('DB_', self.ExSettingsClass)
+        
+        self._compare_settings(self.ExSettingsClass, extracted)
+    
+    def test_extract_settings_class_instance(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class instance/object"""
+        inst = self.ExSettingsInst()
+        extracted = helpers.extract_settings('DB_', inst)
+        
+        self._compare_settings(inst, extracted, orig_uppercase=False)
+    
+    def test_extract_settings_class_instance_case_sensitive(self):
+        """
+        Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class instance/object (case sensitive)
+        """
+        inst = self.ExSettingsInst()
+        extracted = helpers.extract_settings('db_', inst, _case_sensitive=True)
+        
+        self._compare_settings(inst, extracted, orig_uppercase=False)
+    
+    def test_extract_settings_class_instance_case_sensitive_fail(self):
+        """
+        Test :func:`.extract_settings` returns empty dict for ``DB_`` prefixed settings from a class instance
+        (case sensitive)
+        """
+        inst = self.ExSettingsInst()
+        extracted = helpers.extract_settings('DB_', inst, _case_sensitive=True)
+        
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 0)
+    
+    def test_extract_settings_modules(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a python module"""
+        from privex.helpers import settings as ex_settings
+        
+        keys_ex = [k for k in ex_settings.__dict__.keys() if k[:6] == 'REDIS_']
+        
+        extracted = helpers.extract_settings('REDIS_', ex_settings)
+        self.assertEqual(extracted['db'], ex_settings.REDIS_DB)
+        self.assertEqual(extracted['port'], ex_settings.REDIS_PORT)
+        self.assertEqual(extracted['host'], ex_settings.REDIS_HOST)
+        
+        self.assertEqual(len(extracted.keys()), len(keys_ex))
+    
+    def test_extract_settings_case_sensitive(self):
+        """Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class (case sensitive)"""
+        extracted = helpers.extract_settings('DB_', self.ExSettingsClass, _case_sensitive=True)
+        
+        self._compare_settings(self.ExSettingsClass, extracted, uppercase=True)
+    
+    def test_extract_settings_case_sensitive_fail(self):
+        """Test :func:`.extract_settings` returns empty dict for ``db_`` prefix from a class (case sensitive)"""
+        extracted = helpers.extract_settings('db_', self.ExSettingsClass, _case_sensitive=True)
+        
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 0)
+    
+    def test_extract_settings_case_sensitive_lowercase_keys(self):
+        """
+        Test :func:`.extract_settings` can correctly extract ``DB_`` prefixed settings from a class
+        (case sensitive + lowercase keys)
+        """
+        extracted = helpers.extract_settings('DB_', self.ExSettingsClass, _case_sensitive=True, _keys_lower=True)
+        self._compare_settings(self.ExSettingsClass, extracted, uppercase=False)
+    
+    def test_extract_settings_case_sensitive_lowercase_keys_fail(self):
+        """
+        Test :func:`.extract_settings` returns empty dict for ``db_`` prefixed settings from a class
+        (case sensitive + lowercase keys)
+        """
+        extracted = helpers.extract_settings('db_', self.ExSettingsClass, _case_sensitive=True, _keys_lower=True)
+        
+        self.assertTrue(isinstance(extracted, dict))
+        self.assertEqual(len(extracted.keys()), 0)
+
+
+class TestGeneralTail(PrivexBaseCase):
+    """Test cases for :func:`.io_tail` and :func:`.tail`"""
+    
+    def test_io_tail_500_lines_300(self):
+        """
+        Test :func:`.io_tail` by tailing 300 lines of a 500 line file, then comparing each line from generated chunks against the
+        original lines written to the file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = _create_test_file(tfile, 500)
+            
+            i = -1  # Position -1 is the last line in the ``lines`` list
+            for chunk in helpers.io_tail(tfile, 300):
+                # We reverse each chunk, so that we can cleanly compare last lines -> first lines
+                chunk.reverse()
+                # We lower i by 1 for each line in the chunk, so we're reading ``lines`` backwards, while reading the reversed ``chunk``
+                # from the last line until the first line of the chunk.
+                for l in chunk:
+                    self.assertEqual(l, lines[i], msg=f"l == lines[{i}] // '{l}' == '{lines[i]}'")
+                    i -= 1
+            # Since the last line of ``lines`` was -1 instead of -0, the final iteration should result in -301
+            self.assertEqual(i, -301)
+    
+    def test_tail_10_lines_3(self):
+        """
+        Test :func:`.tail` by comparing the last 3 lines of a 10 line testing file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = _create_test_file(tfile, 10)
+            
+            tailed = helpers.tail(tfile.name, 3)
+            self.assertEqual(len(tailed), 3)
+            self.assertEqual(tailed[0], "This is an example line 8")
+            self.assertEqual(tailed[1], "This is an example line 9")
+            self.assertEqual(tailed[2], "This is an example line 10")
+    
+    def test_tail_10_lines_5(self):
+        """
+        Test :func:`.tail` by comparing the first and last tailed 5 lines of a 10 line testing file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = _create_test_file(tfile, 10)
+            
+            tailed = helpers.tail(tfile.name, 5)
+            self.assertEqual(len(tailed), 5)
+            self.assertEqual(tailed[0], lines[-5])
+            self.assertEqual(tailed[4], lines[-1])
+    
+    def test_tail_10_lines_10(self):
+        """
+        Test :func:`.tail` works when ``nlines`` is equal to the amount of lines in the file. We tail 10 lines of a 10 line test file,
+        then compare all 10 original lines against the output from tail.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = _create_test_file(tfile, 10)
+            
+            tailed = helpers.tail(tfile.name, 10)
+            self.assertEqual(len(tailed), 10)
+            for i, l in enumerate(lines):
+                self.assertEqual(tailed[i], lines[i], msg=f"tailed[{i}] == lines[{i}] // '{tailed[i]}' == '{lines[i]}'")
+    
+    def test_tail_500_lines_20(self):
+        """
+        Test :func:`.tail` with a larger test file. Tailing 20 lines of a 500 line test file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = _create_test_file(tfile, 500)
+            
+            tailed = helpers.tail(tfile.name, 20)
+            self.assertEqual(len(tailed), 20)
+            # Compare the last 20 lines from ``lines``, against ``tailed`` starting from position 0
+            i = 0
+            for l in lines[480:]:
+                self.assertEqual(tailed[i], l, msg=f"tailed[i] == l // '{tailed[i]}' == '{l}'")
+                i += 1
+    
+    def test_tail_500_lines_300(self):
+        """
+        Test :func:`.tail` with a larger line count. Tailing 300 lines of a 500 line test file.
+        """
+        with NamedTemporaryFile() as tfile:
+            lines = _create_test_file(tfile, 500)
+            
+            tailed = helpers.tail(tfile.name, 300)
+            self.assertEqual(len(tailed), 300)
+            # Compare the last 300 lines from ``lines``, against ``tailed`` starting from position 0
+            i = 0
+            for l in lines[200:]:
+                self.assertEqual(tailed[i], l, msg=f"tailed[i] == l // '{tailed[i]}' == '{l}'")
+                i += 1
+
+
+class TestGeneralAlmost(PrivexBaseCase):
+    def test_two_numbers(self):
+        """Test :func:`.almost` with two Decimal numbers"""
+        self.assertTrue(helpers.almost(Decimal('5'), Decimal('5.001')))
+        self.assertFalse(helpers.almost(Decimal('5'), Decimal('5.3')))
+
+    def test_four_numbers(self):
+        """Test :func:`.almost` with four string numbers"""
+        self.assertTrue(helpers.almost('5', '5.005', '4.99', '5.006'))
+        self.assertFalse(helpers.almost('5', '5.3', '5.01', '4.99'))
+
+    def test_two_numbers_pt1tolerance(self):
+        """Test :func:`.almost` with two string numbers and 0.1 tolerance"""
+        self.assertTrue(helpers.almost('10', '10.1', tolerance='0.1'))
+        self.assertFalse(helpers.almost('10', '10.2', tolerance='0.1'))
+
+    def test_four_numbers_pt1tolerance(self):
+        """Test :func:`.almost` with four string numbers and 0.1 tolerance"""
+        self.assertTrue(helpers.almost('10', '10.1', '10.05', '9.9', tolerance='0.1'))
+        self.assertFalse(helpers.almost('10', '10.05', '10.3', '10.2', tolerance='0.1'))
+
+    def test_two_numbers_fail_kwarg(self):
+        """Test :func:`.almost` with two string numbers and ``fail=True`` kwarg"""
+        self.assertTrue(helpers.almost('5', '5.001', fail=True))
+        with self.assertRaises(AssertionError):
+            helpers.almost('5', '5.3', fail=True)
+
+    def test_two_numbers_test_kwarg(self):
+        """Test :func:`.almost` with two string numbers and ``test=True`` kwarg"""
+        self.assertTrue(helpers.almost('5', '5.001', test=True))
+        with self.assertRaises(AssertionError):
+            helpers.almost('5', '5.3', test=True)
+

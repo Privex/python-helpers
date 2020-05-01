@@ -41,7 +41,7 @@ from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Opti
 from privex.helpers import settings
 
 from privex.helpers.collections import DictObject, OrderedDictObject
-from privex.helpers.types import T, K, V, C, USE_ORIG_VAR, STRBYTES
+from privex.helpers.types import T, K, V, C, USE_ORIG_VAR, STRBYTES, Number, NumberStr
 
 log = logging.getLogger(__name__)
 
@@ -990,6 +990,86 @@ def filter_form(form: Mapping, *keys, cast: callable = None) -> Dict[str, Any]:
     if cast is not None:
         filtered = {k: cast(v) for k, v in filtered.items()}
     return filtered
+
+
+def almost(compare: NumberStr, *numbers: NumberStr, tolerance: NumberStr = Decimal('0.01'), **kwargs) -> bool:
+    """
+    Compare two or more numbers, returning ``True`` if all ``numbers`` are no more than ``tolerance``
+    greater or smaller than than ``compare`` - otherwise ``False``.
+    
+    Works similarly to :py:meth:`unittest.TestCase.assertAlmostEqual`
+    
+    Basic usage with two numbers + default tolerance (``0.01``)::
+    
+        >>> almost('5', '5.001')
+        True
+        >>> almost('5', '5.5')
+        False
+    
+    Multiple numbers + custom tolerance::
+    
+        >>> almost('5', '5.14', '4.85', '5.08', tolerance=Decimal('0.2'))
+        True
+        >>> almost('5', '5.3', '4.85', '5.08', tolerance=Decimal('0.2'))
+        False
+    
+    Using ``fail`` or ``test``::
+        
+        >>> # By passing ``fail=True``, a descriptive AssertionError is raised when the tolerance check fails.
+        >>> almost('5', '5.01', fail=True)
+        True
+        >>> almost('5', '5.02', fail=True)
+        Traceback (most recent call last):
+          File "<stdin>", line 1, in <module>
+          File "privex/helpers/common.py", line 1044, in almost
+            raise AssertionError(
+        AssertionError: Number at position 0 (val: 5.02) failed tolerance (0.01) check against 5
+        >>> # By passing ``test=True``, a standard ``assert`` will be used to compare the numbers.
+        >>> almost('5', '5.01', test=True)
+        True
+        >>> almost('5', '5.02', test=True)
+        Traceback (most recent call last):
+          File "<stdin>", line 1, in <module>
+          File "privex/helpers/common.py", line 1041, in almost
+            assert (x - tolerance) <= compare <= (x + tolerance)
+        AssertionError
+
+    
+    :param Decimal|int|float compare: The base number which all ``numbers`` will be compared against.
+    :param Decimal|int|float numbers: One or more numbers to compare against ``compare``
+    :param Decimal|int|float tolerance: (kwarg only) Amount that each ``numbers`` can be greater/smaller than ``compare`` before
+                                        returning ``False``.
+    :keyword bool fail: (default: ``False``) If true, will raise :class:`.AssertionError` on failed tolerance check, instead of
+                        returning ``False``. (mutually exclusive with ``assert``)
+    :keyword bool test: (default: ``False``) If true, will use ``assert`` instead of testing with ``if``. Useful in unit tests.
+                        (mutually exclusive with ``raise``)
+    :raises AttributeError: When less than 1 number is present in ``numbers``
+    :raises AssertionError: When kwarg ``raise`` is ``True`` and one or more numbers failed the tolerance check.
+    :return bool is_almost: ``True`` if all ``numbers`` are within ``tolerance`` of ``compare``, ``False`` if one or more ``numbers``
+                            is outside of the tolerance.
+    """
+    
+    if len(numbers) < 1:
+        raise AttributeError(
+            f'privex.helpers.common.almost expects at least ONE number to compare.'
+        )
+    
+    numbers = [Decimal(n) for n in numbers]
+    compare, tolerance = Decimal(compare), Decimal(tolerance)
+    
+    should_raise, should_assert = kwargs.get('fail', False), kwargs.get('test', False)
+    
+    for i, x in enumerate(numbers):
+        if should_assert:
+            assert (x - tolerance) <= compare <= (x + tolerance)
+        elif not ((x - tolerance) <= compare <= (x + tolerance)):
+            if should_raise:
+                raise AssertionError(
+                    f"Number at position {i} (val: {x}) failed tolerance ({tolerance}) check against {compare}"
+                )
+            return False
+    
+    return True
 
 
 IS_XARGS = re.compile('^\*([a-zA-Z0-9_])+$')
