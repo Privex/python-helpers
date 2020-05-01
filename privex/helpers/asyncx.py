@@ -44,6 +44,29 @@ __all__ = [
 ]
 
 
+def _is_coro(obj: Any) -> bool:
+    """
+    Small helper function to test an object against :meth:`inspect.iscoroutinefunction` and
+    :meth:`inspect.iscoroutine` with a try/except to protect against a missing ``_is_coroutine`` attribute
+    causing an error.
+    
+    :param Any obj: The object to check
+    :return bool is_coro: ``True`` if ``obj`` is a coroutine function or a coroutine. Otherwise ``False``.
+    """
+    try:
+        if inspect.iscoroutinefunction(obj) or inspect.iscoroutine(obj):
+            return True
+        return False
+    except (AttributeError, KeyError) as e:
+        # iscoroutine / iscoroutinefunction can sometimes throw a KeyError / AttributeError when checking
+        # for the '_is_coroutine' key / attribute. If we encounter such an error, it's probably not a coroutine.
+        log.debug(
+            "exception while checking if object '%s' is coroutine in asyncx._is_coro: %s %s",
+            obj, type(e), str(e)
+        )
+    return False
+
+
 def run_sync(func, *args, **kwargs):
     """
     Run an async function synchronously (useful for REPL testing async functions). (TIP: Consider using :func:`.loop_run` instead)
@@ -118,12 +141,12 @@ def loop_run(coro: Union[Coroutine, Type[Coroutine], Callable], *args, _loop=Non
     
     :return Any coro_result: The returned data from executing the coroutine / async function
     """
-    if not asyncio.iscoroutinefunction(coro) and not asyncio.iscoroutine(coro):
+    if not _is_coro(coro):
         log.debug("Passed 'coro' object isn't a co-routine or async func. Actual type: %s", coro)
         if callable(coro):
             log.debug("Passed 'coro' object is a callable. Calling coro object with args: %s // kwargs: %s", args, kwargs)
             x = coro(*args, **kwargs)
-            if asyncio.iscoroutinefunction(x) or asyncio.iscoroutine(x):
+            if _is_coro(x):
                 log.debug("Call result from 'coro(*args, **kwargs)' is a coro / async func. Re-running loop_run. ")
                 return loop_run(x, *args, _loop=_loop, **kwargs)
             log.debug("Call result from 'coro(*args, **kwargs)' isn't async func / coro. Returning object: %s ", x)
@@ -292,8 +315,9 @@ def get_async_type(obj) -> str:
     :param Any obj: Object to check for async type
     :return str async_type: Either ``'coro func'``, ``'coro'``, ``'awaitable'``, ``'sync func'`` or ``'unknown'``
     """
-    if asyncio.iscoroutinefunction(obj): return "coro func"
-    if asyncio.iscoroutine(obj): return "coro"
+    if _is_coro(obj):
+        if asyncio.iscoroutinefunction(obj): return "coro func"
+        if asyncio.iscoroutine(obj): return "coro"
     if isinstance(obj, Awaitable): return "awaitable"
     if callable(obj): return "sync func"
     return "unknown"
@@ -372,7 +396,7 @@ class AwaitableMixin:
     def __getattribute__(self, item):
         a = object.__getattribute__(self, item)
         
-        if not inspect.iscoroutinefunction(a) and not inspect.iscoroutine(a): return a
+        if not _is_coro(a): return a
 
         def _wrp(*args, **kwargs):
             return a if is_async_context() and not _awaitable_blacklisted() else loop_run(a, *args, **kwargs)
@@ -447,7 +471,7 @@ def awaitable_class(cls: Type[T]) -> Type[T]:
             cls_name = super().__getattribute__('__class__').__name__
             # full_attr = f"{self.__class__.__name__}.{item}"
             full_attr = f"{cls_name}.{item}"
-            if not inspect.iscoroutinefunction(a) and not inspect.iscoroutine(a):
+            if not _is_coro(a):
                 log.debug("Attribute %s is not a coroutine or coro function. Returning normally.", full_attr)
                 return a
             # return awaitable(a) if inspect.iscoroutinefunction(a) else a
@@ -532,7 +556,7 @@ def awaitable(func: Callable) -> Callable:
         # The wrapped function isn't a coroutine function, nor a coroutine. This may be caused by an adapter
         # wrapper class which deals with both synchronous and asynchronous adapters.
         # Since it doesn't appear to be a coroutine, just return the result.
-        if not asyncio.iscoroutinefunction(coroutine) and not asyncio.iscoroutine(coroutine):
+        if not _is_coro(coroutine):
             return coroutine
 
         # Always run the coroutine in an event loop if the caller function is blacklisted in the AWAITABLE_BLACKLIST* lists
