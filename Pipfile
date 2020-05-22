@@ -33,6 +33,7 @@ aioredis = "*"
 async-property = "*"
 aiomcache = "*"
 hiredis = "*"
+geoip2 = "*"
 
 [requires]
 python_version = "3.8"

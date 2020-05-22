@@ -115,6 +115,13 @@ try:
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "converter", cannot load any converter.* modules...')
 
+try:
+    from privex.helpers.geoip import *
+    
+    plugin.HAS_GEOIP = True
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "geoip", not loading GeoIP2 helpers')
+
 
 def _setup_logging(level=logging.WARNING):
     """
@@ -136,7 +143,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.11.0'
+VERSION = '2.12.0'
 
 
 

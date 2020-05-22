@@ -15,6 +15,10 @@ Django
 # Extra [net] - file: extras/net.txt
 dnspython>=1.16
 
+# Extra [geoip] - file: extras/geoip.txt
+geoip2>=3.0.0
+attrs
+
 # Extra [tests] - file: extras/tests.txt
 pytest
 pytest-cov

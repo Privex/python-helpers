@@ -29,7 +29,8 @@ To override settings from your app::
 
 
 """
-from os.path import dirname, abspath, join
+from os import getcwd, getenv as env
+from os.path import dirname, abspath, join, expanduser
 
 BASE_DIR = dirname(dirname(dirname(abspath(__file__))))
 """The root folder of this project (i.e. where setup.py is)"""
@@ -75,6 +76,34 @@ MEMCACHED_HOST = 'localhost'
 MEMCACHED_PORT = 11211
 """Port number that Memcached is running on at ``MEMCACHED_HOST``"""
 
+########################################
+#                                      #
+#       GeoIP Module Settings          #
+#                                      #
+#       privex.helpers.geoip           #
+#                                      #
+########################################
 
+search_geoip = [
+    '/usr/share/GeoIP',
+    '/usr/lib/GeoIP',
+    '/var/lib/GeoIP',
+    '/usr/local/share/GeoIP',
+    '/usr/local/var/GeoIP',
+    '/var/GeoIP',
+    join(getcwd(), 'GeoIP'),
+    expanduser('~/GeoIP'),
+    expanduser('~/.GeoIP'),
+]
+
+
+GEOIP_DIR = env('GEOIP_DIR', '/usr/share/GeoIP')
+GEOASN_NAME = env('GEOASN_NAME', 'GeoLite2-ASN.mmdb')
+GEOCITY_NAME = env('GEOCITY_NAME', 'GeoLite2-City.mmdb')
+GEOCOUNTRY_NAME = env('GEOCOUNTRY_NAME', 'GeoLite2-Country.mmdb')
+
+GEOASN_DETECTED, GEOCITY_DETECTED, GEOCOUNTRY_DETECTED = False, False, False
+
+GEOCITY, GEOASN, GEOCOUNTRY = join(GEOIP_DIR, GEOCITY_NAME), join(GEOIP_DIR, GEOASN_NAME), join(GEOIP_DIR, GEOCOUNTRY_NAME)
 
 

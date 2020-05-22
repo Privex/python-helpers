@@ -24,16 +24,20 @@ Network related helper code
 import logging
 import platform
 import subprocess
-from privex.helpers.exceptions import BoundaryException, NetworkUnreachable
+import socket
+from privex.helpers.exceptions import BoundaryException, NetworkUnreachable, ReverseDNSNotFound, InvalidHost
 from privex.helpers import plugin
 from ipaddress import ip_address, IPv4Address, IPv6Address
-from typing import Union
+from typing import Union, Optional, List, Dict, Generator, Tuple
+
+from privex.helpers.types import IP_OR_STR
 
 log = logging.getLogger(__name__)
 
 __all__ = [
     'ip_to_rdns', '_check_boundaries', 'ip4_to_rdns', 'ip6_to_rdns', 'ip_is_v4', 'ip_is_v6',
-    'ping', 'BoundaryException', 'NetworkUnreachable'
+    'ping', 'resolve_ip', 'resolve_ips', 'resolve_ips_multi', 'get_rdns', 'get_rdns_multi',
+    'BoundaryException', 'NetworkUnreachable'
 ]
 
 try:
@@ -259,3 +263,297 @@ def ping(ip: str, timeout: int = 30) -> bool:
             raise NetworkUnreachable(f'Got error from ping: "{err}"')
         
         return 'bytes from {}'.format(ip) in out.decode('utf-8')
+
+
+def resolve_ips(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) -> List[str]:
+    """
+    
+    With just a single hostname argument, both IPv4 and IPv6 addresses will be returned as strings::
+    
+        >>> resolve_ips('www.privex.io')
+        ['2a07:e00::abc', '185.130.44.10']
+    
+    You can provide the ``version`` argument as either positional or kwarg, e.g. ``v4`` or ``v6`` to restrict the results
+    to only that IP version::
+    
+        >>> resolve_ips('privex.io', version='v4')
+        ['185.130.44.10']
+    
+    The ``v4_convert`` option is ``False`` by default, which prevents ``::ffff:`` style IPv6 wrapped IPv4 addresses being
+    returned when you request version ``v6``::
+        >>> resolve_ips('microsoft.com')
+        ['40.76.4.15', '40.112.72.205', '13.77.161.179', '40.113.200.201', '104.215.148.63']
+        >>> resolve_ips('microsoft.com', 'v6')
+        []
+    
+    If for whatever reason, you need ``::ffff:`` IPv6 wrapped IPv4 addresses to be returned, you can set ``v4_convert=True``,
+    which will disable filtering out ``::ffff:`` fake IPv6 addresses::
+    
+        >>> resolve_ips('microsoft.com', 'v6', v4_convert=True)
+        ['::ffff:40.76.4.15', '::ffff:40.112.72.205', '::ffff:13.77.161.179',
+         '::ffff:40.113.200.201', '::ffff:104.215.148.63']
+    
+    For convenience, if an IPv4 / IPv6 address is specified, then it will simply be validated against ``version`` and then returned
+    within a list. This is useful when handling user specified data, which may be either a hostname or an IP address, and you
+    need to resolve hostnames while leaving IP addresses alone::
+    
+        >>> resolve_ips('8.8.4.4')
+        ['8.8.4.4']
+        >>> resolve_ips('2a07:e00::333')
+        ['2a07:e00::333']
+        
+        >>> resolve_ips('8.8.4.4', 'v6')
+        Traceback (most recent call last):
+          File "<ipython-input-10-6ca9e766006f>", line 1, in <module>
+            resolve_ips('8.8.4.4', 'v6')
+        AttributeError: Passed address '8.8.4.4' was an IPv4 address, but 'version' requested an IPv6 address.
+        
+        >>> resolve_ips('2a07:e00::333', 'v4')
+        Traceback (most recent call last):
+          File "<ipython-input-11-543bfa71c57a>", line 1, in <module>
+            resolve_ips('2a07:e00::333', 'v4')
+        AttributeError: Passed address '2a07:e00::333' was an IPv6 address, but 'version' requested an IPv4 address.
+        
+
+    :param str|IPv4Address|IPv6Address addr: The hostname to resolve. If an IPv4 / IPv6 address is passed instead of a hostname,
+                                             it will be validated against ``version``, then returned in a single item list.
+    
+    :param str|int version: Default: ``'any'`` - Return both IPv4 and IPv6 addresses (if both are found). If an IP address is passed,
+                            then both IPv4 and IPv6 addresses will be accepted. If set to one of the IPv4/IPv6 version choices, then a
+                            passed IP of the wrong version will raise :class:`.AttributeError`
+                            
+                            Choices:
+                              * **IPv4 Options**: ``4`` (int), ``'v4'``, ``'4'`` (str), ``'ipv4'``, ``'inet'``, ``'inet4'``
+                              * **IPv6 Options**: ``6`` (int), ``'v6'``, ``'6'`` (str), ``'ipv6'``, ``'inet6'``
+    
+    :param bool v4_convert: (Default: ``False``) If set to ``True``, will allow IPv6-wrapped IPv4 addresses starting with ``::ffff:`` to
+                            be returned when requesting version ``v6`` from an IPv4-only hostname.
+    
+    :raises AttributeError: Raised when an IPv4 address is passed and ``version`` is set to IPv6 - as well as vice versa (IPv6 passed
+                            while version is set to IPv4)
+    
+    :return List[str] ips: Zero or more IP addresses in a list of :class:`str`'s
+    """
+    addr = str(addr)
+    version = version.lower() if version not in [socket.AF_INET, socket.AF_INET6] else version
+    if version in [4, 'v4', '4', 'ipv4', 'inet', 'inet4']: version = socket.AF_INET
+    if version in [6, 'v6', '6', 'ipv6', 'inet6']: version = socket.AF_INET6
+    ips = []
+    try:
+        ip = ip_address(addr)
+        ver = "v4" if ip_is_v4(ip) else "v6"
+        if version == socket.AF_INET and ver != 'v4':
+            raise AttributeError(f"Passed address '{addr}' was an IPv6 address, but 'version' requested an IPv4 address.")
+        if version == socket.AF_INET6 and ver != 'v6':
+            raise AttributeError(f"Passed address '{addr}' was an IPv4 address, but 'version' requested an IPv6 address.")
+        return [str(ip)]
+    except ValueError:
+        try:
+            if version in [socket.AF_INET, socket.AF_INET6]:
+                _ips = socket.getaddrinfo(addr, 2001, family=version, proto=socket.IPPROTO_TCP)
+            else:
+                _ips = socket.getaddrinfo(addr, 2001, proto=socket.IPPROTO_TCP)
+            for ip in _ips:
+                ips += [ip[-1][0]]
+            # If a hostname has no AAAA records, and we request AF_INET6, getaddrinfo often converts the A records
+            # into IPv6-wrapped IPv4 addresses like so: ``::ffff:13.77.161.179``
+            # Most people who specifically request IPv6 want only real IPv6 addresses, not IPv4 addresses wrapped in IPv6 format.
+            if not v4_convert:
+                ips = [ip for ip in ips if not ip.startswith('::ffff')]
+            return ips
+        except Exception as e:
+            log.warning("Exception occurred while resolving host %s - reason: %s %s", addr, type(e), str(e))
+            return ips
+
+
+def resolve_ip(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) -> Optional[str]:
+    """
+    Wrapper for :func:`.resolve_ips` - passes args to :func:`.resolve_ips` and returns the first item from the results.
+    
+    If the results are empty, ``None`` will be returned.
+    
+    Examples::
+    
+        >>> resolve_ip('privex.io')
+        '2a07:e00::abc'
+        >>> resolve_ip('privex.io', 'v4')
+        '185.130.44.10'
+        >>> resolve_ip('microsoft.com')
+        '104.215.148.63'
+        >>> repr(resolve_ip('microsoft.com' ,'v6'))
+        'None'
+        >>> resolve_ip('microsoft.com' ,'v6', v4_convert=True)
+        '::ffff:104.215.148.63'
+
+    :param str|IPv4Address|IPv6Address addr: Hostname to resolve / IP address to validate or pass-thru
+    
+    :param str|int version: (Default: ``any``) - ``4`` (int), ``'v4'``, ``6`` (int), ``'v6'`` (see :func:`.resolve_ips` for more options)
+    
+    :param bool v4_convert: (Default: ``False``) If set to ``True``, will allow IPv6-wrapped IPv4 addresses starting with ``::ffff:`` to
+                            be returned when requesting version ``v6`` from an IPv4-only hostname.
+    
+    :raises AttributeError: Raised when an IPv4 address is passed and ``version`` is set to IPv6 - as well as vice versa (IPv6 passed
+                            while version is set to IPv4)
+    
+    :return Optional[str] ips: An IPv4/v6 address as a string if there was at least 1 result - otherwise ``None``.
+    """
+    ips = resolve_ips(addr, version=version, v4_convert=v4_convert)
+    if len(ips) == 0:
+        return None
+    return ips[0]
+
+
+def resolve_ips_multi(*addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) \
+        -> Generator[Tuple[str, Optional[List[str]]], None, None]:
+    """
+    Resolve IPv4/v6 addresses for multiple hosts specified as positional arguments.
+    
+    Returns results as a generator, to allow for efficient handling of a large amount of hostnames to resolve.
+    
+    Using the generator in a loop efficiently::
+    
+        >>> for host, ips in resolve_ips_multi('privex.io', 'cloudflare.com', 'google.com'):
+        ...     print(f"{host:<20} ->   {', '.join(ips)}")
+        ...
+        privex.io            ->   2a07:e00::abc, 185.130.44.10
+        cloudflare.com       ->   2606:4700::6811:af55, 2606:4700::6811:b055, 104.17.176.85, 104.17.175.85
+        google.com           ->   2a00:1450:4009:807::200e, 216.58.204.238
+    
+    If you're only resolving a small number of hosts ( less than 100 or so ), you can simply cast the generator into
+    a :class:`dict` using ``dict()``, which will get you a dictionary of hosts mapped to lists of IP addresses.
+
+    Dictionary Cast Examples::
+        
+        >>> dict(resolve_ips_multi('privex.io', 'microsoft.com', 'google.com'))
+        {'privex.io': ['2a07:e00::abc', '185.130.44.10'],
+         'microsoft.com': ['104.215.148.63', '40.76.4.15', '40.112.72.205', '40.113.200.201', '13.77.161.179'],
+         'google.com': ['2a00:1450:4009:807::200e', '216.58.204.238']}
+        >>> dict(resolve_ips_multi('privex.io', 'microsoft.com', 'google.com', version='v6'))
+        {'privex.io': ['2a07:e00::abc'], 'microsoft.com': [], 'google.com': ['2a00:1450:4009:81c::200e']}
+        >>> dict(resolve_ips_multi('privex.io', 'this-does-not-exist', 'google.com', version='v6'))
+        {'privex.io': ['2a07:e00::abc'], 'this-does-not-exist': [], 'google.com': ['2a00:1450:4009:81c::200e']}
+         >>> dict(resolve_ips_multi('privex.io', 'example.com', '127.0.0.1', version='v6'))
+        [resolve_ips_multi AttributeError] Invalid IP: 127.0.0.1 - Ex: <class 'AttributeError'> Passed address '127.0.0.1' was
+                                           an IPv4 address, but 'version' requested an IPv6 address.
+        {'privex.io': ['2a07:e00::abc'], 'example.com': ['2606:2800:220:1:248:1893:25c8:1946'], '127.0.0.1': None}
+    
+    
+    :param str|IPv4Address|IPv6Address addr: Hostname to resolve / IP address to validate or pass-thru
+    :param str|int version: (Default: ``any``) - ``4`` (int), ``'v4'``, ``6`` (int), ``'v6'`` (see :func:`.resolve_ips` for more options)
+    :param bool v4_convert: (Default: ``False``) If set to ``True``, will allow IPv6-wrapped IPv4 addresses starting with ``::ffff:`` to
+                            be returned when requesting version ``v6`` from an IPv4-only hostname.
+                            
+    :return Tuple[str,Optional[List[str]] gen:  A generator which returns tuples containing a hostname/IP, and a list of it's resolved
+        IPs. If the IP was rejected (e.g. IPv4 IP passed with ``v6`` ``version`` param), then the list may instead be ``None``.
+    """
+    for a in addr:
+        try:
+            res = resolve_ips(a, version=version, v4_convert=v4_convert)
+            yield (a, res)
+        except socket.gaierror as e:
+            log.warning("[resolve_ips_multi socket.gaierror] Failed to resolve host: %s - Ex: %s %s", addr, type(e), str(e))
+            yield (a, None)
+        except AttributeError as e:
+            log.warning("[resolve_ips_multi AttributeError] Invalid IP: %s - Ex: %s %s", a, type(e), str(e))
+            yield (a, None)
+
+
+def get_rdns(host: IP_OR_STR, throw=True) -> Optional[str]:
+    """
+    Look up the reverse DNS hostname for ``host`` and return it as a string. The ``host`` can be an IP address as a :class:`str`,
+    :class:`.IPv4Address`, :class:`.IPv6Address` - or a domain.
+    
+    If a domain is passed, e.g. ``privex.io`` - then the reverse DNS will be looked up for the IP address contained in the domain's
+    AAAA or A records.
+    
+    Toggle ``throw`` to control whether to raise exceptions on error (``True``), or to simply return None (``False``).
+    
+    Basic usage::
+    
+        >>> from privex.helpers import get_rdns
+        >>> get_rdns('185.130.44.10')
+        'web-se1.privex.io'
+        >>> get_rdns('2a07:e00::333')
+        'se.dns.privex.io'
+        >>> get_rdns('privex.io')
+        'web-se1.privex.io'
+    
+    Error handling::
+    
+        >>> get_rdns('192.168.4.5')
+        Traceback (most recent call last):
+          File "<ipython-input-14-e1ed65295031>", line 1, in <module>
+            get_rdns('192.168.4.5')
+        privex.helpers.exceptions.ReverseDNSNotFound: No reverse DNS records found for host '192.168.4.5':
+            <class 'socket.herror'> [Errno 1] Unknown host
+        >>> get_rdns('non-existent-domain.example')
+        Traceback (most recent call last):
+          File "<ipython-input-16-0d75d37a930f>", line 1, in <module>
+            get_rdns('non-existent-domain.example')
+        privex.helpers.exceptions.InvalidHost: Host 'non-existent-domain.example' is not a valid IP address,
+        nor an existent domain: <class 'socket.gaierror'> [Errno 8] nodename nor servname provided, or not known
+        >>> repr(get_rdns('192.168.4.5', throw=False))
+        'None'
+        >>> repr(get_rdns('non-existent-domain.example', False))
+        'None'
+    
+    
+    :param str|IPv4Address|IPv6Address host: An IPv4/v6 address, or domain to lookup reverse DNS for.
+    :param bool throw: (Default: ``True``) When ``True``, will raise :class:`.ReverseDNSNotFound` or :class:`.InvalidHost` when no
+                       rDNS records can be found for ``host``, or when ``host`` is an invalid IP / non-existent domain.
+                       When ``False``, will simply return ``None`` when ``host`` is invalid, or no rDNS records are found.
+    :raises ReverseDNSNotFound: When ``throw`` is True and no rDNS records were found for ``host``
+    :raises InvalidHost: When ``throw`` is True and ``host`` is an invalid IP address or non-existent domain/hostname
+    :return Optional[str] rDNS: The reverse DNS hostname for ``host`` (value of PTR record)
+    """
+    try:
+        rdns = socket.gethostbyaddr(str(host))
+        return rdns[0]
+    except socket.herror as e:
+        if throw: raise ReverseDNSNotFound(f"No reverse DNS records found for host '{host}': {type(e)} {str(e)}")
+    except socket.gaierror as e:
+        if throw: raise InvalidHost(f"Host '{host}' is not a valid IP address, nor an existent domain: {type(e)} {str(e)}")
+    return None
+
+
+def get_rdns_multi(*hosts: IP_OR_STR, throw=False) -> Generator[Tuple[str, Optional[str]], None, None]:
+    """
+    Resolve reverse DNS hostnames for multiple IPs / domains specified as positional arguments.
+    
+    Each host in ``hosts`` can be an IP address as a :class:`str`, :class:`.IPv4Address`, :class:`.IPv6Address` - or a domain.
+    
+    Returns results as a generator, to allow for efficient handling of a large amount of hosts to resolve.
+    
+    Basic usage::
+    
+        >>> for host, rdns in get_rdns_multi('185.130.44.10', '8.8.4.4', '1.1.1.1', '2a07:e00::333'):
+        >>>     print(f"{host:<20} -> {rdns:>5}")
+        185.130.44.10        -> web-se1.privex.io
+        8.8.4.4              -> dns.google
+        1.1.1.1              -> one.one.one.one
+        2a07:e00::333        -> se.dns.privex.io
+    
+    If you're only resolving a small number of hosts ( less than 100 or so ), you can simply cast the generator into
+    a :class:`dict` using ``dict()``, which will get you a dictionary of hosts mapped to their rDNS::
+    
+        >>> data = dict(get_rdns_multi('185.130.44.10', '8.8.4.4', '1.1.1.1', '2a07:e00::333'))
+        >>> data['8.8.4.4']
+        'dns.google'
+        >>> data.get('2a07:e00::333', 'error')
+        'se.dns.privex.io'
+    
+    :param str|IPv4Address|IPv6Address hosts: One or more IPv4/v6 addresses, or domains to lookup reverse DNS for - as positional args.
+    
+    :param bool throw: (Default: ``False``) When ``True``, will raise :class:`.ReverseDNSNotFound` or :class:`.InvalidHost` when no
+                       rDNS records can be found for a host, or when the host is an invalid IP / non-existent domain.
+                       When ``False``, will simply return ``None`` when a host is invalid, or no rDNS records are found.
+    
+    :raises ReverseDNSNotFound: When ``throw`` is True and no rDNS records were found for ``host``
+    :raises InvalidHost: When ``throw`` is True and ``host`` is an invalid IP address or non-existent domain/hostname
+    
+    :return Tuple[str,Optional[str]] rDNS: A generator returning :class:`tuple`'s containing the original passed host, and it's
+                                           reverse DNS hostname (value of PTR record)
+    """
+    for h in hosts:
+        yield (str(h), get_rdns(str(h), throw=throw))
+

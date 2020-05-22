@@ -32,11 +32,15 @@ how to override the settings if the defaults don't work for you.
 """
 import logging
 import threading
+from os import path
 from typing import Any, Union, Optional
+
+from privex.helpers.collections import DictObject
 
 from privex.helpers import settings
 from privex.helpers.types import T
 from privex.helpers.common import empty_if
+from privex.helpers.exceptions import GeoIPDatabaseNotFound
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +69,9 @@ HAS_SETUPPY_BUMP = False
 
 HAS_SETUPPY_COMMANDS = False
 """If :py:mod:`privex.helpers.setuppy.commands` was imported successfully, this will change to True"""
+
+HAS_GEOIP = False
+"""If :py:mod:`privex.helpers.geoip` was imported successfully, this will change to True"""
 
 __STORE = dict(threads={})
 """This ``dict`` is used to store initialised classes for connections to databases, APIs etc."""
@@ -349,3 +356,147 @@ except Exception as e:
     log.debug('%s failed to import "aiomcache", (unknown exception), Async Memcached dependent helpers '
               'will be disabled. Exception: %s %s', __name__, type(e), str(e))
 
+try:
+    import geoip2
+    import geoip2.database
+
+    def connect_geoip(*args, **geo_config) -> geoip2.database.Reader:
+        return geoip2.database.Reader(*args, **geo_config)
+
+    def get_geodbs() -> DictObject:
+        return DictObject({
+            'city':    DictObject(
+                name=settings.GEOCITY_NAME, path=settings.GEOCITY, detected=settings.GEOCITY_DETECTED
+            ),
+            'country': DictObject(
+                name=settings.GEOCOUNTRY_NAME, path=settings.GEOCOUNTRY, detected=settings.GEOCOUNTRY_DETECTED
+            ),
+            'asn': DictObject(
+                name=settings.GEOASN_NAME, path=settings.GEOASN, detected=settings.GEOASN_DETECTED
+            ),
+        })
+
+    def _find_geoip(geo_type: str) -> Optional[str]:
+        _geo_dbs = get_geodbs()
+
+        if geo_type not in _geo_dbs:
+            raise AttributeError("_find_geoip: geo_type must be 'city', 'asn' or 'country'")
+        log.debug("Locating GeoIP %s - _geo_dbs = %s", geo_type.capitalize(), _geo_dbs)
+        for p in settings.search_geoip:
+            g_p = path.join(p, _geo_dbs[geo_type].name)
+            log.debug("Checking if %s exists...", g_p)
+            if path.exists(g_p):
+                log.debug("Found GeoIP %s (%s) in path: %s", geo_type, _geo_dbs[geo_type], g_p)
+                return g_p
+        log.warning("Failed to find GeoIP %s in search paths %s", geo_type.capitalize(), settings.search_geoip)
+        return None
+        
+
+    def get_geoip_db(geo_type: str) -> str:
+        """
+        Return the full path to the GeoIP2 database for ``geo_type``.
+        
+        If we haven't yet scanned the search paths for the database, then :func:`._find_geoip` will be called
+        to try and locate the database file.
+        
+        If the database is found, the ``_DETECTED`` boolean setting will be changed to ``True`` so we know that the
+        path contained in the :func:`.get_geodbs` result is valid in the future, avoiding unnecessary searches.
+        
+        If the database can't be found anywhere within the search paths, :class:`.GeoIPDatabaseNotFound` will be raised.
+        
+        :param str geo_type: The GeoIP database type: either 'city', 'asn' or 'country'
+        :raises GeoIPDatabaseNotFound: If the database for ``geo_type`` could not be found.
+        :return str path: The full path to the detected GeoIP database
+        """
+        _geo_dbs = get_geodbs()
+    
+        if geo_type not in _geo_dbs:
+            raise AttributeError("get_geoip_db: geo_type must be 'city', 'asn' or 'country'")
+        gdb = _geo_dbs[geo_type]
+        if gdb.detected:
+            return gdb.path
+        
+        gp = _find_geoip(geo_type)
+        if not gp:
+            log.error("Failed to locate GeoIP ASN + City in alternative search folders.")
+            log.error(f" [!!!] ERROR - Missing GeoIP files. The following files do not exist:\n")
+            log.error(f"\t{gdb.path}")
+            log.error(f"\nCurrent environment settings for GeoIP location:\n")
+    
+            log.error(f"GEOIP_DIR={settings.GEOIP_DIR}")
+            log.error(f"GEOASN_NAME={settings.GEOASN_NAME}")
+            log.error(f"GEOCITY_NAME={settings.GEOCITY_NAME}\n")
+            log.error(f"GEOCOUNTRY_NAME={settings.GEOCOUNTRY_NAME}\n")
+    
+            log.error("Please download the GeoLite2 City and ASN GeoIP databases (Maxmind Binary Database format) "
+                      "for FREE from the following URL:\n")
+            log.error("\thttps://dev.maxmind.com/geoip/geoip2/geolite2/\n")
+            log.error("It's recommended to place the .mmdb files in the default folder '/usr/share/GeoIP/' - "
+                      "as most applications which use Maxmind GeoIP2 will use that folder by default.\n")
+            log.error("You can alternatively place the .mmdb files into any of these folders:\n")
+            for p in settings.search_geoip:
+                log.error("\t - %s", p)
+            log.error("")
+            log.error("For most functionality, you'll need both GeoIP2 City + GeoIP2 ASN. The GeoIP2 City database generally provides "
+                      "everything in the Country database, plus City data - making the Country database generally redundant.\n")
+            raise GeoIPDatabaseNotFound(f"Failed to locate GeoIP {geo_type.capitalize()} ({gdb.name})")
+        
+        if geo_type == 'city':
+            settings.GEOCITY, settings.GEOCITY_DETECTED = gp, True
+        if geo_type == 'country':
+            settings.GEOCOUNTRY, settings.GEOCOUNTRY_DETECTED = gp, True
+        if geo_type == 'asn':
+            settings.GEOASN, settings.GEOASN_DETECTED = gp, True
+        
+        return gp
+        
+
+    def get_geoip(geo_type: str, new_connection=False, thread_id=None, **geo_config) -> geoip2.database.Reader:
+        """Get a GeoIP Reader object. Create one if it doesn't exist."""
+        from privex.helpers.common import empty_if, extract_settings
+        
+        gdb = get_geoip_db(geo_type)
+        _geo_dbs = get_geodbs()
+        
+        if geo_type not in _geo_dbs:
+            raise AttributeError("get_geoip: geo_type must be 'city', 'asn' or 'country'")
+        
+        if new_connection:
+            return connect_geoip(gdb, **geo_config)
+
+        tsname = f'geoip_{geo_type}'
+        geo = _get_threadstore(tsname, thread_id=thread_id)
+    
+        if geo is None:
+            geo = connect_geoip(gdb, **geo_config)
+            _set_threadstore(tsname, geo, thread_id=thread_id)
+        return geo
+
+
+    def close_geoip(geo_type: str, thread_id=None) -> bool:
+        """
+        Close the global GeoIP connection and delete the instance.
+        
+        :param str geo_type: The GeoIP database type: either 'city', 'asn' or 'country'
+        :param thread_id: Close and delete the Redis instance for this thread ID, instead of the detected current thread
+        :return bool deleted: ``True`` if an instance was found and deleted. ``False`` if there was no existing Redis instance.
+        """
+        tsname = f'geoip_{geo_type}'
+        geo: Union[str, geoip2.database.Reader] = _get_threadstore(tsname, 'NOT_FOUND', thread_id=thread_id)
+        if geo != 'NOT_FOUND':
+            geo.close()
+            clean_threadstore(thread_id=thread_id, name=tsname)
+            return True
+        return False
+
+
+    def reset_geoip(geo_type: str, thread_id=None) -> geoip2.database.Reader:
+        """Close the global GeoIP connection, delete the instance, then re-instantiate it"""
+        close_geoip(geo_type, thread_id=thread_id)
+        return get_geoip(geo_type, thread_id=thread_id)
+
+
+    __all__ += ['get_geoip', 'get_geoip_db', 'get_geodbs', 'reset_geoip', 'close_geoip', 'connect_geoip']
+    HAS_GEOIP = True
+except ImportError:
+    log.debug('%s failed to import "geoip2", GeoIP2 dependent helpers will be disabled.', __name__)

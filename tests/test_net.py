@@ -85,3 +85,154 @@ class TestNet(PrivexBaseCase):
         self.assertEqual(helpers.asn_to_name(999999999), 'Unknown ASN')
         with self.assertRaises(KeyError):
             helpers.asn_to_name(999999999, quiet=False)
+    
+    def test_get_rdns_privex_ns1_ip(self):
+        """Test resolving IPv4 and IPv6 addresses into ns1.privex.io"""
+        self.assertEqual(helpers.get_rdns('2a07:e00::100'), 'ns1.privex.io')
+        self.assertEqual(helpers.get_rdns('185.130.44.3'), 'ns1.privex.io')
+
+    def test_get_rdns_privex_ns1_host(self):
+        """Test resolving rDNS for the domains ``steemseed-fin.privex.io`` and ``ns1.privex.io``"""
+        self.assertEqual(helpers.get_rdns('ns1.privex.io'), 'ns1.privex.io')
+        self.assertEqual(helpers.get_rdns('steemseed-fin.privex.io'), 'hiveseed-fin.privex.io')
+
+    def test_get_rdns_invalid_domain(self):
+        """Test :func:`.get_rdns` raises :class:`.InvalidHost` when given a non-existent domain"""
+        with self.assertRaises(helpers.InvalidHost):
+            helpers.get_rdns('non-existent.domain.example')
+
+    def test_get_rdns_no_rdns_records(self):
+        """Test :func:`.get_rdns` raises :class:`.ReverseDNSNotFound` when given a valid IP that has no rDNS records"""
+        with self.assertRaises(helpers.ReverseDNSNotFound):
+            helpers.get_rdns('192.168.5.1')
+    
+    def test_get_rdns_multi(self):
+        """Test :func:`.get_rdns_multi` with 3x IPv4 addresses and 1x IPv6 address"""
+        hosts = dict(helpers.get_rdns_multi('185.130.44.10', '8.8.4.4', '1.1.1.1', '2a07:e00::333'))
+        self.assertEqual(len(hosts.keys()), 4)
+        self.assertEqual(hosts['185.130.44.10'], 'web-se1.privex.io')
+        self.assertEqual(hosts['8.8.4.4'], 'dns.google')
+        self.assertEqual(hosts['1.1.1.1'], 'one.one.one.one')
+        self.assertEqual(hosts['2a07:e00::333'], 'se.dns.privex.io')
+
+    def test_get_rdns_multi_invalid(self):
+        """Test :func:`.get_rdns_multi` with 2x IPv4 addresses + 2x IPv6 addresses with one of each having no records"""
+        hosts = dict(helpers.get_rdns_multi('185.130.44.10', '192.168.5.1', 'fe80::5123', '2a07:e00::333'))
+        self.assertEqual(len(hosts.keys()), 4)
+        self.assertEqual(hosts['185.130.44.10'], 'web-se1.privex.io')
+        self.assertIsNone(hosts['192.168.5.1'])
+        self.assertIsNone(hosts['fe80::5123'])
+        self.assertEqual(hosts['2a07:e00::333'], 'se.dns.privex.io')
+
+
+class TestNetResolveIP(PrivexBaseCase):
+    """
+    Test cases related to :func:`.resolve_ips`, :func:`.resolve_ip` and :func:`.resolve_ips_multi`
+    """
+    
+    # --- privex.helpers.net.resolve_ips ---
+    def test_resolve_ips_ipv4_addr(self):
+        """Test :func:`.resolve_ips` returns the same IPv4 address passed to it"""
+        ips = helpers.resolve_ips('185.130.44.5')
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '185.130.44.5')
+
+    def test_resolve_ips_ipv6_addr(self):
+        """Test :func:`.resolve_ips` returns the same IPv6 address passed to it"""
+        ips = helpers.resolve_ips('2a07:e00::333')
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '2a07:e00::333')
+
+    def test_resolve_ips_ipv4_addr_invalid(self):
+        """Test :func:`.resolve_ips` raises :class:`.AttributeError` when ``version`` is v4 but an IPv6 address was passed"""
+        with self.assertRaises(AttributeError):
+            helpers.resolve_ips('2a07:e00::333', 'v4')
+
+    def test_resolve_ips_ipv6_addr_invalid(self):
+        """Test :func:`.resolve_ips` raises :class:`.AttributeError` when ``version`` is v6 but an IPv4 address was passed"""
+        with self.assertRaises(AttributeError):
+            helpers.resolve_ips('185.130.44.5', 'v6')
+
+    def test_resolve_ips_hiveseed(self):
+        """Test :func:`.resolve_ips` returns expected v4 + v6 for ``hiveseed-fin.privex.io``"""
+        ips = helpers.resolve_ips('hiveseed-fin.privex.io')
+        self.assertEqual(len(ips), 2)
+        self.assertIn('2a01:4f9:2a:3d4::2', ips)
+        self.assertIn('95.216.3.171', ips)
+
+    def test_resolve_ips_hiveseed_v4(self):
+        """Test :func:`.resolve_ips` returns only v4 for ``hiveseed-fin.privex.io`` when version is set to v4"""
+        ips = helpers.resolve_ips('hiveseed-fin.privex.io', 'v4')
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '95.216.3.171')
+
+    def test_resolve_ips_hiveseed_v6(self):
+        """Test :func:`.resolve_ips` returns only v6 for ``hiveseed-fin.privex.io`` when version is set to v6"""
+        ips = helpers.resolve_ips('hiveseed-fin.privex.io', 'v6')
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '2a01:4f9:2a:3d4::2')
+
+    def test_resolve_ips_v4_convert_false(self):
+        """Test :func:`.resolve_ips` returns an empty list for ``microsoft.com`` when v6 requested without v4_convert"""
+        ips = helpers.resolve_ips('microsoft.com', 'v6', v4_convert=False)
+        self.assertEqual(len(ips), 0)
+
+    def test_resolve_ips_v4_convert(self):
+        """Test :func:`.resolve_ips` returns IPv6-wrapped IPv4 addresses for ``microsoft.com`` when v4_convert is enabled + v6 version"""
+        ips = helpers.resolve_ips('microsoft.com', 'v6', v4_convert=True)
+        self.assertTrue(ips[0].startswith('::ffff:'))
+
+    # --- privex.helpers.net.resolve_ip ---
+
+    def test_resolve_ip_v4_convert(self):
+        """Test :func:`.resolve_ip` returns an IPv6-wrapped IPv4 address for ``microsoft.com`` when v4_convert is enabled + v6 version"""
+        ip = helpers.resolve_ip('microsoft.com', 'v6', v4_convert=True)
+        self.assertTrue(ip.startswith('::ffff:'))
+
+    def test_resolve_ip_hiveseed(self):
+        """Test :func:`.resolve_ip` returns expected either correct v4 or v6 for ``hiveseed-fin.privex.io``"""
+        self.assertIn(helpers.resolve_ip('hiveseed-fin.privex.io'), ['95.216.3.171', '2a01:4f9:2a:3d4::2'])
+        
+    def test_resolve_ip_hiveseed_v4(self):
+        """Test :func:`.resolve_ip` returns only v4 for ``hiveseed-fin.privex.io`` when version is v4"""
+        self.assertEqual(helpers.resolve_ip('hiveseed-fin.privex.io', 'v4'), '95.216.3.171')
+
+    def test_resolve_ip_hiveseed_v6(self):
+        """Test :func:`.resolve_ip` returns only v6 for ``hiveseed-fin.privex.io`` when version is v6"""
+        self.assertEqual(helpers.resolve_ip('hiveseed-fin.privex.io', 'v6'), '2a01:4f9:2a:3d4::2')
+
+    # --- privex.helpers.net.resolve_ips_multi ---
+    def test_resolve_ips_multi_any(self):
+        """Test :func:`.resolve_ips_multi` with 2 domains and an IPv4 address"""
+        ips = dict(helpers.resolve_ips_multi('hiveseed-fin.privex.io', 'privex.io', '8.8.4.4'))
+        self.assertIn('2a01:4f9:2a:3d4::2', ips['hiveseed-fin.privex.io'])
+        self.assertIn('95.216.3.171', ips['hiveseed-fin.privex.io'])
+        
+        self.assertIn('2a07:e00::abc', ips['privex.io'])
+        self.assertIn('185.130.44.10', ips['privex.io'])
+        
+        self.assertIn('8.8.4.4', ips['8.8.4.4'])
+
+    def test_resolve_ips_multi_v4(self):
+        """Test :func:`.resolve_ips_multi` with 2 domains, an IPv4 address, and an IPv6 address with version ``v4``"""
+        ips = dict(helpers.resolve_ips_multi('hiveseed-fin.privex.io', 'privex.io', '8.8.4.4', '2a07:e00::333', version='v4'))
+        self.assertNotIn('2a01:4f9:2a:3d4::2', ips['hiveseed-fin.privex.io'])
+        self.assertIn('95.216.3.171', ips['hiveseed-fin.privex.io'])
+    
+        self.assertNotIn('2a07:e00::abc', ips['privex.io'])
+        self.assertIn('185.130.44.10', ips['privex.io'])
+    
+        self.assertIn('8.8.4.4', ips['8.8.4.4'])
+        self.assertIsNone(ips['2a07:e00::333'])
+
+    def test_resolve_ips_multi_v6(self):
+        """Test :func:`.resolve_ips_multi` with 2 domains, an IPv4 address, and an IPv6 address with version ``v6``"""
+        ips = dict(helpers.resolve_ips_multi('hiveseed-fin.privex.io', 'privex.io', '8.8.4.4', '2a07:e00::333', version='v6'))
+        self.assertIn('2a01:4f9:2a:3d4::2', ips['hiveseed-fin.privex.io'])
+        self.assertNotIn('95.216.3.171', ips['hiveseed-fin.privex.io'])
+    
+        self.assertIn('2a07:e00::abc', ips['privex.io'])
+        self.assertNotIn('185.130.44.10', ips['privex.io'])
+
+        self.assertIn('2a07:e00::333', ips['2a07:e00::333'])
+        self.assertIsNone(ips['8.8.4.4'])

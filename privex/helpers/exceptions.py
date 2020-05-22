@@ -29,6 +29,11 @@ class PrivexException(Exception):
     pass
 
 
+class NotFound(Exception):
+    """Generic exception mixin for all exceptions related to something not being found"""
+    pass
+
+
 #####
 # Exceptions related to DNS (domain, or individual record errors)
 #####
@@ -57,7 +62,7 @@ class BoundaryException(BaseDNSException):
     pass
 
 
-class DomainNotFound(BaseDNSException):
+class DomainNotFound(BaseDNSException, NotFound):
     """Thrown when a (sub)domain or it's parent(s) could not be found"""
     pass
 
@@ -67,7 +72,7 @@ class InvalidDNSRecord(BaseDNSException):
     pass
 
 
-class CacheNotFound(PrivexException):
+class CacheNotFound(PrivexException, NotFound):
     """
     Thrown when a cache key is requested, but it doesn't exist / is expired.
     
@@ -97,7 +102,7 @@ class EncryptionError(PrivexException):
     pass
 
 
-class EncryptKeyMissing(EncryptionError):
+class EncryptKeyMissing(EncryptionError, NotFound):
     """Raised when ENCRYPT_KEY is not set, or invalid"""
     pass
 
@@ -113,4 +118,26 @@ class SysCallError(PrivexException):
     Raised when an error appears to have been returned after calling an external command
     (e.g. via :class:`subprocess.Popen`)
     """
+
+
+class GeoIPException(PrivexException):
+    pass
+
+
+class GeoIPDatabaseNotFound(GeoIPException, NotFound):
+    pass
+
+
+class GeoIPAddressNotFound(GeoIPException, NotFound):
+    pass
+
+
+class ReverseDNSNotFound(PrivexException, NotFound):
+    """Raised when a given IP address does not have a reverse DNS set"""
+    pass
+
+
+class InvalidHost(PrivexException, ValueError):
+    """Raised when a passed IP address or hostname/domain is invalid."""
+    pass
 
