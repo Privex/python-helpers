@@ -128,7 +128,7 @@ class TestGeoIP(PrivexBaseCase):
         self.assertEqual(data.country, 'Sweden')
         self.assertEqual(data.country_code, 'SE')
         self.assertEqual(data.city, 'Stockholm')
-        self.assertEqual(str(data.network), '185.130.44.0/24')
+        self.assertIn(str(data.network), ['185.130.44.0/24', '185.130.44.0/23', '185.130.44.0/22'])
 
     def test_geoip_v6_privex1(self):
         """Test ``2a07:e00::333`` resolves correctly using :meth:`.geoip.geolocate_ip`"""
@@ -138,7 +138,8 @@ class TestGeoIP(PrivexBaseCase):
         self.assertEqual(data.country, 'Sweden')
         self.assertEqual(data.country_code, 'SE')
         self.assertEqual(data.city, 'Stockholm')
-        self.assertEqual(str(data.network), '2a07:e00::/48')
+        # GeoIP's network value isn't reliable, so we simple check it starts with 2a07:e00::/
+        self.assertIn('2a07:e00::/', str(data.network))
     
     def test_geoip_v4_hetzner1(self):
         """Test ``95.216.3.171`` resolves correctly using :meth:`.geoip.geolocate_ip`"""
@@ -148,7 +149,9 @@ class TestGeoIP(PrivexBaseCase):
         self.assertEqual(data.country, 'Finland')
         self.assertEqual(data.country_code, 'FI')
         self.assertIn(data.city, [None, 'Helsinki'])
-        self.assertEqual(str(data.network), '95.216.0.0/15')
+        # GeoIP's network value isn't reliable, so we simply check the first 5 characters, and confirm there's a / present
+        self.assertTrue(str(data.network).startswith('95.21'))
+        self.assertIn('/', str(data.network))
 
     def test_geoip_v6_hetzner1(self):
         """Test ``2a01:4f9:2a:3d4::2`` resolves correctly using :meth:`.geoip.geolocate_ip`"""
@@ -163,6 +166,7 @@ class TestGeoIP(PrivexBaseCase):
         self.assertIn(data.country_code, ['FI', 'DE'])
         # Again, the IPv6 network that this address belongs to can fluctuate - so we just make sure it starts with 2a01:4f
         self.assertTrue(str(data.network).startswith('2a01:4f'))
+        self.assertIn('/', str(data.network))
 
     def test_geoip_v4_local(self):
         with self.assertRaises(GeoIPAddressNotFound):
