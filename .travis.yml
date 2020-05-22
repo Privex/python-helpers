@@ -12,6 +12,7 @@ python:
 before_install:
   - sudo apt-get update -qy
   - sudo apt-get install -qy iputils-ping
+  - "sudo rsync -avh 'rsync://files.privex.io/cdn/extras/GeoIP/*.mmdb' /usr/share/GeoIP/"
 install:
   - pip install -U '.[dev]'
 script: pytest --cov=./privex -rxXs -v

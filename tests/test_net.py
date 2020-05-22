@@ -180,6 +180,11 @@ class TestNetResolveIP(PrivexBaseCase):
     def test_resolve_ips_v4_convert(self):
         """Test :func:`.resolve_ips` returns IPv6-wrapped IPv4 addresses for ``microsoft.com`` when v4_convert is enabled + v6 version"""
         ips = helpers.resolve_ips('microsoft.com', 'v6', v4_convert=True)
+        if ips is None or len(ips) == 0:
+            return pytest.skip(
+                f"Skipping test TestNetResolveIP.test_resolve_ips_v4_convert as v6-wrapped IPv4 addresses "
+                f"aren't supported on this platform."
+            )
         self.assertTrue(ips[0].startswith('::ffff:'))
 
     # --- privex.helpers.net.resolve_ip ---
@@ -187,6 +192,11 @@ class TestNetResolveIP(PrivexBaseCase):
     def test_resolve_ip_v4_convert(self):
         """Test :func:`.resolve_ip` returns an IPv6-wrapped IPv4 address for ``microsoft.com`` when v4_convert is enabled + v6 version"""
         ip = helpers.resolve_ip('microsoft.com', 'v6', v4_convert=True)
+        if ip is None:
+            return pytest.skip(
+                f"Skipping test TestNetResolveIP.test_resolve_ip_v4_convert as v6-wrapped IPv4 addresses "
+                f"aren't supported on this platform."
+            )
         self.assertTrue(ip.startswith('::ffff:'))
 
     def test_resolve_ip_hiveseed(self):
