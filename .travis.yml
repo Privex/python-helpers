@@ -1,6 +1,6 @@
 dist: bionic
 services:
-  - redis-server
+  - redis
   - memcached
 language: python
 cache: pip
@@ -9,6 +9,11 @@ python:
   - "3.7"
   - "3.8"
   - "nightly"
+jobs:
+  allow_failures:
+    # Sometimes nightly builds are broken, or contain breaking changes that affect dependencies we have
+    # no control over. Thus we don't want a failed nightly run to cause Travis to consider the build broken.
+    - python: 'nightly'
 before_install:
   - sudo apt-get update -qy
   - sudo apt-get install -qy iputils-ping
