@@ -44,7 +44,7 @@ BASE_DIR = dirname(abspath(__file__))
 with open(join(BASE_DIR, "README.md"), "r") as fh:
     long_description = fh.read()
 
-extensions = ['full', 'cache', 'crypto', 'django', 'docs', 'dev', 'extras', 'net', 'tests', 'setuppy']
+extensions = ['full', 'cache', 'crypto', 'django', 'docs', 'dev', 'extras', 'geoip', 'net', 'tests', 'setuppy']
 
 extra_commands = {}
 

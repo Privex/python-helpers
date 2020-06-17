@@ -40,12 +40,42 @@ Test cases for :py:mod:`privex.helpers.collections`
 """
 import inspect
 import json
+import warnings
 from typing import Union
 from collections import namedtuple, OrderedDict
+
+from privex import helpers
 from privex.helpers import dictable_namedtuple, is_namedtuple, subclass_dictable_namedtuple, \
-    convert_dictable_namedtuple, DictObject, OrderedDictObject
+    convert_dictable_namedtuple, DictObject, OrderedDictObject, copy_class, Mocker, DictDataClass
 from tests.base import PrivexBaseCase
 import logging
+
+try:
+    import pytest
+    
+    HAS_PYTEST = True
+except ImportError:
+    warnings.warn('WARNING: Could not import pytest. You should run "pip3 install pytest" to ensure tests work best')
+    pytest = helpers.Mocker.make_mock_class('module')
+    pytest.skip = lambda msg, allow_module_level=True: warnings.warn(msg)
+    pytest.add_mock_module('mark')
+    pytest.mark.skip, pytest.mark.skipif = helpers.mock_decorator, helpers.mock_decorator
+    HAS_PYTEST = False
+
+try:
+    from dataclasses import dataclass, field
+    HAS_DATACLASSES = True
+except ImportError:
+    HAS_DATACLASSES = False
+    warnings.warn(
+        'WARNING: Could not import dataclasses module (Python older than 3.7?). '
+        'For older python versions such as 3.6, you can run "pip3 install dataclasses" to install the dataclasses '
+        'backport library, which emulates Py3.7+ dataclasses using older syntax.', category=ImportWarning
+    )
+    # To avoid a severe syntax error caused by the missing dataclass types, we generate a dummy dataclass and field class
+    # so that type annotations such as Type[dataclass] don't break the test before it can be skipped.
+    dataclass = Mocker.make_mock_class(name='dataclass', instance=False)
+    field = Mocker.make_mock_class(name='field', instance=False)
 
 log = logging.getLogger(__name__)
 
@@ -404,3 +434,233 @@ class TestDictableNamedtuple(PrivexBaseCase):
         self._check_cast_dict(di)
         # Test converting to a dict (via ._asdict())
         self._check_asdict(di)
+
+
+# noinspection PyPep8Naming
+def _gen_inheritance():
+    # We'll create three classes, which inherit from each other linearly: A->B->C
+    # Each inheriting child may add new things, and/or override things from the parent.
+    # This way we can check that the inheritance was copied correctly, by testing overridden and non-overridden attributes.
+    class A:
+        hello = 'world'
+
+    class B(A):
+        example = 'test'
+        potato = 'tomato'
+
+        @staticmethod
+        def lorem(): return 'ipsum'
+    
+        @staticmethod
+        def blue(): return 'orange'
+
+    class C(B):
+        potato = 'tree'
+
+        @staticmethod
+        def blue(): return 'yellow'
+    
+    return A, B, C
+
+
+def _gen_basic_class():
+    class BasicClass:
+        example = 'lorem ipsum'
+        data = ['hello', 'world']
+        testing = 123
+    
+        @classmethod
+        def example_method(cls):
+            return cls.testing * 3
+    
+        def inst_method(self):
+            return self.data + [self.__class__.__name__]
+
+    return BasicClass
+
+
+# noinspection PyPep8Naming
+class TestCopyClass(PrivexBaseCase):
+    def test_copy_class_name(self):
+        BasicClass = _gen_basic_class()
+        self.assertEqual(BasicClass.__name__, 'BasicClass')
+        
+        ExampleClass = copy_class(BasicClass, 'ExampleClass')
+        self.assertEqual(ExampleClass.__name__, 'ExampleClass')
+        self.assertEqual(ExampleClass.__module__, BasicClass.__module__)
+
+    def test_copy_class_bases(self):
+        # Using our helper function _gen_inheritance, we can generate three classes for testing inheritance.
+        # With 'A' being the root parent, 'B' being a child of 'A', and 'C' being a child of 'B'.
+        A, B, C = _gen_inheritance()
+        
+        # Copy the class 'C' as 'NewC'
+        NewC = copy_class(C, 'NewC')
+        
+        # Check that the three attributes 'hello', 'example' and 'potato', which were added/changed throughout the inheritance tree,
+        # are the values we'd expect to see in our copy of C - the end of the inheritance tree.
+        self.assertEqual(NewC.hello, 'world')
+        self.assertEqual(NewC.potato, 'tree')
+        self.assertEqual(NewC.example, 'test')
+        
+        # We'll also check the class methods - 'lorem' and 'blue' added in 'B', while 'blue' was also overrided by 'C'.
+        self.assertEqual(NewC.lorem(), 'ipsum')
+        self.assertEqual(NewC.blue(), 'yellow')
+        # Since NewC is a copy of C - it should fail an instance inheritance check against the original C
+        self.assertNotIsInstance(NewC(), C)
+        self.assertIsInstance(NewC(), NewC)
+        # However, if the bases were retained correctly, it should still validate as a child-class instance of B and A
+        self.assertIsInstance(NewC(), B)
+        self.assertIsInstance(NewC(), A)
+
+    def test_copy_class_no_bases(self):
+        # Using our helper function _gen_inheritance, we can generate three classes for testing inheritance.
+        # With 'A' being the root parent, 'B' being a child of 'A', and 'C' being a child of 'B'.
+        A, B, C = _gen_inheritance()
+
+        # Copy the class 'C' as 'NewC'
+        NewC = copy_class(C, 'NewC', use_bases=False)
+        
+        self.assertEqual(NewC.potato, 'tree')
+        self.assertEqual(NewC.blue(), 'yellow')
+        # Since there's no inheritance, NewC should not count as an instance of B or A
+        self.assertNotIsInstance(NewC(), B)
+        self.assertNotIsInstance(NewC(), A)
+        # The attributes 'example' and 'hello' were not overridden by C, so without inheritance, they should not exist.
+        self.assertFalse(hasattr(NewC, 'example'))
+        self.assertFalse(hasattr(NewC, 'hello'))
+        # The method 'lorem' was not overridden by C, so without inheritance, it should not exist.
+        self.assertFalse(hasattr(NewC, 'lorem'))
+        
+    def test_copy_class_basic(self):
+        # First we generate a class - containing a string, list, + integer attribute, plus a class method.
+        BasicClass = _gen_basic_class()
+        
+        # Sanity test that the class contains the original data we expected it to.
+        self.assertListEqual(BasicClass.data, ['hello', 'world'])
+        self.assertEqual(BasicClass.example, 'lorem ipsum')
+        self.assertEqual(BasicClass.testing, 123)
+        self.assertEqual(BasicClass.example_method(), 123 * 3)
+        
+        # We'll change the 'testing' integer and the 'data' list as another sanity test
+        BasicClass.testing = 234
+        BasicClass.data.append('test')
+        self.assertEqual(BasicClass.testing, 234)
+        self.assertListEqual(BasicClass.data, ['hello', 'world', 'test'])
+        
+        # Now we copy BasicClass into NewClass, and confirm NewClass's initial state matches BasicClass
+        NewClass = copy_class(BasicClass, name='NewClass')
+        self.assertEqual(NewClass.testing, 234)
+        self.assertListEqual(NewClass.data, ['hello', 'world', 'test'])
+        self.assertEqual(NewClass.example, 'lorem ipsum')
+        
+        # If the copy worked as expected, we should be able to modify the 3 attributes without affecting BasicClass
+        NewClass.testing = 345
+        NewClass.data.append('orange')
+        NewClass.example = 'hello test'
+        self.assertEqual(NewClass.testing, 345)
+        self.assertListEqual(NewClass.data, ['hello', 'world', 'test', 'orange'])
+        self.assertEqual(NewClass.example, 'hello test')
+        self.assertEqual(NewClass.example_method(), 345 * 3)
+        
+        # Check to make sure the state of BasicClass wasn't affected...
+        self.assertEqual(BasicClass.testing, 234)
+        self.assertListEqual(BasicClass.data, ['hello', 'world', 'test'])
+        self.assertEqual(BasicClass.example, 'lorem ipsum')
+        self.assertEqual(BasicClass.example_method(), 234 * 3)
+
+
+DDC_TEST_DICT = dict(hello='example', extra='data', other=['test'])
+
+
+@pytest.mark.skipif(HAS_DATACLASSES is False, reason='HAS_DATACLASSES is False (Python older than 3.7?)')
+class TestDictDataClass(PrivexBaseCase):
+    @staticmethod
+    def _gen_example_dc():
+        @dataclass
+        class ExampleDC(DictDataClass):
+            hello: str = 'world'
+            example: int = 444
+            some_list: list = field(default_factory=lambda: ['hello', 'world'])
+            raw_data: Union[dict, DictObject] = field(default_factory=DictObject, repr=False)
+            """The raw, unmodified data that was passed as kwargs, as a dictionary"""
+        
+        return ExampleDC
+    
+    def test_convert_dataclass_dict_default(self):
+        """Test :class:`.DictDataClass` dictionary casting when constructing a dataclass normally"""
+        ExampleDC = self._gen_example_dc()
+        dc = ExampleDC()
+        dict_dc = dict(dc)
+        self.assertIsInstance(dict_dc, dict)
+        self.assertEqual(dict_dc['hello'], 'world')
+        self.assertEqual(dict_dc['example'], 444)
+        self.assertListEqual(dict_dc['some_list'], ['hello', 'world'])
+
+    def test_convert_dataclass_dict_default_raw_data(self):
+        """Test :class:`.DictDataClass` dictionary casting when constructing using ``from_dict``"""
+        ExampleDC = self._gen_example_dc()
+        dc = ExampleDC.from_dict(DDC_TEST_DICT)
+        dict_dc = dict(dc)
+        self.assertIsInstance(dict_dc, dict)
+        self.assertEqual(dict_dc['hello'], 'example')
+        self.assertEqual(dict_dc['example'], 444)
+        self.assertEqual(dict_dc['extra'], 'data')
+        self.assertListEqual(dict_dc['other'], ['test'])
+
+    def test_convert_dataclass_dict_attrib_only(self):
+        """Test :class:`.DictDataClass` dictionary casting when set to dataclass attribute only mode"""
+        ExampleDC = self._gen_example_dc()
+        
+        @dataclass
+        class SubDC(ExampleDC):
+            class DictConfig:
+                dict_convert_mode = None
+        
+        dc = SubDC.from_dict(DDC_TEST_DICT)
+        dict_dc = dict(dc)
+        self.assertIsInstance(dict_dc, dict)
+        # In the fallback convert mode, only the standard dataclass attributes should've made it into the dict.
+        self.assertEqual(dict_dc['hello'], 'example')
+        self.assertEqual(dict_dc['example'], 444)
+        self.assertListEqual(dict_dc['some_list'], ['hello', 'world'])
+        self.assertNotIn('extra', dict_dc)
+        self.assertNotIn('other', dict_dc)
+
+    def test_convert_dataclass_dict_raw_only(self):
+        """Test :class:`.DictDataClass` dictionary casting when set to raw_data only mode"""
+        ExampleDC = self._gen_example_dc()
+    
+        @dataclass
+        class SubDC(ExampleDC):
+            class DictConfig:
+                dict_convert_mode = 'raw'
+    
+        dc = SubDC.from_dict(DDC_TEST_DICT)
+        dict_dc = dict(dc)
+        self.assertIsInstance(dict_dc, dict)
+        # In the raw_data only mode, only the original attribute 'hello' (passed in from_dict),
+        # and the extraneous dict keys should've made it into the converted dict.
+        self.assertEqual(dict_dc['hello'], 'example')
+        self.assertNotIn('example', dict_dc)
+        self.assertNotIn('some_list', dict_dc)
+        self.assertEqual(dict_dc['extra'], 'data')
+        self.assertListEqual(dict_dc['other'], ['test'])
+    
+    def test_dataclass_from_dict(self):
+        """Test constructing a :class:`.DictDataClass` from a dictionary + test attribs can be accessed via both attribute + key"""
+        ExampleDC = self._gen_example_dc()
+        dc = ExampleDC.from_dict(DDC_TEST_DICT)
+        
+        # Test the original dataclass attributes AND the extraneous from_dict dictionary keys as attributes
+        self.assertEqual(dc.hello, 'example')
+        self.assertEqual(dc.example, 444)
+        self.assertEqual(dc.extra, 'data')
+        self.assertListEqual(dc.other, ['test'])
+        # Test the original dataclass attributes via keys (like a dict), plus the from_dict keys via dict keys
+        self.assertEqual(dc['hello'], 'example')
+        self.assertEqual(dc['example'], 444)
+        self.assertEqual(dc['extra'], 'data')
+        self.assertListEqual(dc['other'], ['test'])
+
+

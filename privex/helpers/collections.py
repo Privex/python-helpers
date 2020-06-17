@@ -189,13 +189,261 @@ with ``dictable_namedtuple``)
 
 
 """
+import copy
 import inspect
 import sys
 from collections import namedtuple, OrderedDict
-from typing import Dict, Optional, NamedTuple, Union, Type
+from types import MemberDescriptorType
+from typing import Dict, Optional, NamedTuple, Union, Type, List, Generator, Iterable, TypeVar
+from privex.helpers.types import T, K
 import logging
+import warnings
 
 log = logging.getLogger(__name__)
+
+
+class Mocker(object):
+    """
+    This mock class is designed to be used either to act as a stand-in "noop" (no operation) object, which
+    could be used either as a drop-in replacement for a failed module / class import, or for certain unit tests.
+
+    If you need additional functionality such as methods having actual behaviour, you can set attributes on a
+    Mocker instance to either a lambda, or point them at a real function/method::
+
+        >>> m = Mocker()
+        >>> m.some_func = lambda a: a+1
+        >>> m.some_func(5)
+        6
+
+
+    **Example use case - fallback for unimportant module imports**
+
+    Below is a real world example of using :class:`.Mocker` and :py:func:`privex.helpers.decorators.mock_decorator`
+    to simulate :py:mod:`pytest` - allowing your tests to run under the standard :py:mod:`unittest` framework if
+    a user doesn't have pytest (as long as your tests aren't critically dependent on PyTest).
+
+    Try importing ``pytest`` then fallback to a mock pytest::
+
+        >>> try:
+        ...     import pytest
+        ... except ImportError:
+        ...     from privex.helpers import Mocker, mock_decorator
+        ...     print('Failed to import pytest. Using privex.helpers.Mocker to fake pytest.')
+        ...     # Make pytest pretend to be the class 'module' (the class actually used for modules)
+        ...     pytest = Mocker.make_mock_class('module')
+        ...     # To make pytest.mark.skip work, we add the fake module 'mark', then set skip to `mock_decorator`
+        ...     pytest.add_mock_module('mark')
+        ...     pytest.mark.skip = mock_decorator
+        ...
+
+    Since we added the mock module ``mark``, and set the attribute ``skip`` to point at ``mock_decorator``, the
+    test function ``test_something`` won't cause a syntax error. ``mock_decorator`` will just call test_something()
+    which doesn't do anything anyway::
+
+        >>> @pytest.mark.skip(reason="this test doesn't actually do anything...")
+        ... def test_something():
+        ...     pass
+        >>>
+        >>> def test_other_thing():
+        ...     if True:
+        ...         return pytest.skip('cannot test test_other_thing because of an error')
+        ...
+        >>>
+
+    **Generating "disguised" mock classes**
+
+    If you need the mock class to appear to have a certain class name and/or module path, you can generate
+    "disguised" mock classes using :py:meth:`.make_mock_class` like so:
+
+        >>> redis = Mocker.make_mock_class('Redis', module='redis')
+        >>> redis
+        <redis.Redis object at 0x7fd7402ea4a8>
+
+    **A :class:`.Mocker` instance has the following behaviour**
+
+    * Attributes that don't exist result in a function being returned, which accepts any arguments / keyword args,
+      and simply returns ``None``
+
+    Example::
+
+        >>> m = Mocker()
+        >>> repr(m.randomattr('hello', world=123))
+        'None'
+
+
+    * Arbitrary attributes ``x.something`` and items ``x['something']`` can be set on an instance, and they will
+      be similarly returned when they're accessed. Attributes and items share the same key/value's, so the
+      following examples are all accessing the same data::
+
+    Example::
+
+        >>> m = Mocker()
+        >>> m.example = 'hello'
+        >>> m['example'] = 'world'
+        >>> print(m.example)
+        world
+        >>> print(m['example'])
+        world
+
+    * You can add arbitrary "modules" to a Mocker instance. With only the ``name`` argument, :py:meth:`.add_mock_module`
+      will add a "module" under the instance, which is really just another :class:`.Mocker` instance.
+
+    Example::
+
+        >>> m = Mocker()
+        >>> m.add_mock_module('my_module')
+        >>> m.my_module.example = 'hello'
+        >>> print(m.my_module['example'], m.my_module.example)
+        hello hello
+
+
+    """
+    mock_modules: dict
+    mock_attrs: dict
+    
+    def __init__(self, modules: dict = None, attributes: dict = None):
+        self.mock_attrs = {} if attributes is None else attributes
+        self.mock_modules = {} if modules is None else modules
+    
+    @classmethod
+    def make_mock_class(cls, name='Mocker', instance=True, **kwargs):
+        """
+        Return a customized mock class or create an instance which appears to be named ``name``
+
+        Allows code which might check ``x.__class__.__name__`` to believe it's the correct object.
+
+        Using the kwarg ``module`` you can change the module that the class / instance appears to have been imported
+        from, allowing for quite deceiving fake classes and instances.
+
+        **Example usage**::
+
+            >>> redis = Mocker.make_mock_class('Redis', module='redis')
+            >>> # As seen below, the class appears to be called Redis, and even claims to be from the module `redis`
+            >>> redis
+            <redis.Redis object at 0x7fd7402ea4a8>
+            >>> print(f'Module: {redis.__module__} - Class Name: {redis.__class__.__name__}')
+            Module: redis - Class Name: Redis
+
+        **Creating methods/attributes dynamically**
+
+        You can set arbitrary attributes to point at a function, or just set them to a lambda::
+
+            >>> redis.exists = lambda key: 1
+            >>> redis.exists('hello')
+            1
+            >>> redis.hello()  # Non-existent attributes just act as a function that eats any args and returns None
+            None
+
+
+        :param name: The name to write onto the mock class's ``__name__`` (and ``__qualname__`` if not specified)
+        :param bool instance: If ``True`` then the disguised mock class will be returned as an instance. Otherwise
+                              the raw class itself will be returned for you to instantiate yourself.
+        :param kwargs: All kwargs (other than ``qualname``) are forwarded to ``__init__`` of the disguised class
+                       if ``instance`` is True.
+        :key str qualname: Optionally specify the "qualified name" to insert into ``__qualname__``. If this isn't
+                           specified, then ``name`` is used for qualname, which is fine for most cases anyway.
+        :key str module: Optionally override the module namespace that the class is supposedly from. If not specified,
+                         then the class will just inherit this module (``privex.helpers.common``)
+        :return:
+        """
+        qualname = kwargs.pop('qualname', name)
+        
+        class OuterMocker(cls):
+            pass
+        
+        OuterMocker.__name__ = name
+        OuterMocker.__qualname__ = qualname
+        
+        if 'module' in kwargs:
+            OuterMocker.__module__ = kwargs['module']
+        
+        return OuterMocker() if instance else OuterMocker
+    
+    def add_mock_module(self, name: str, value=None, mock_attrs: dict = None, mock_modules: dict = None):
+        """
+        Add a fake sub-module to this Mocker instance.
+
+        Example::
+
+            >>> m = Mocker()
+            >>> m.add_mock_module('my_module')
+            >>> m.my_module.example = 'hello'
+            >>> print(m.my_module['example'], m.my_module.example)
+            hello hello
+
+
+        :param str name: The name of the module to add.
+        :param value: Set the "module" to this object, instead of an instance of :class:`.Mocker`
+        :param dict mock_attrs: If ``value`` is ``None``, then this can optionally contain a dictionary of
+                                attributes/items to pre-set on the Mocker instance.
+        :param dict mock_modules: If ``value`` is ``None``, then this can optionally contain a dictionary of
+                                 "modules" to pre-set on the Mocker instance.
+        """
+        mock_attrs = {} if mock_attrs is None else mock_attrs
+        mock_modules = {} if mock_modules is None else mock_modules
+        
+        self.mock_modules[name] = Mocker(modules=mock_modules, attributes=mock_attrs) if value is None else value
+    
+    def __getattribute__(self, item):
+        try:
+            return super().__getattribute__(item)
+        except AttributeError:
+            pass
+        try:
+            if item in super().__getattribute__('mock_modules'):
+                return self.mock_modules[item]
+        except AttributeError:
+            pass
+        try:
+            if item in super().__getattribute__('mock_attrs'):
+                return self.mock_attrs[item]
+        except AttributeError:
+            pass
+        
+        return lambda *args, **kwargs: None
+    
+    def __setattr__(self, key, value):
+        if key in ['mock_attrs', 'mock_modules']:
+            return super().__setattr__(key, value)
+        m = super().__getattribute__('mock_attrs')
+        m[key] = value
+    
+    def __getitem__(self, item):
+        try:
+            return self.__getattribute__(item)
+        except AttributeError as ex:
+            raise KeyError(str(ex))
+    
+    def __setitem__(self, key, value):
+        try:
+            self.__setattr__(key, value)
+        except AttributeError as ex:
+            raise KeyError(str(ex))
+    
+    @property
+    def __name__(self):
+        return self.__class__.__name__
+
+
+try:
+    # noinspection PyCompatibility
+    import dataclasses
+    # noinspection PyCompatibility
+    from dataclasses import dataclass, field
+except (ImportError, ImportWarning, AttributeError, KeyError) as e:
+    warnings.warn(
+        f"Failed to import dataclasses (added in Python 3.7). Setting placeholders for typing. "
+        f"If you're running Python older than 3.7 and want to use the dataclass features in privex-helpers, "
+        f"please update to Python 3.7+, or run 'pip3 install -U dataclasses' to install the backported dataclass emulation "
+        f"library for older Python versions.", category=ImportWarning
+    )
+    # To avoid a severe syntax error caused by the missing dataclass types, we generate a dummy dataclasses module, along with a
+    # dummy dataclass and field class so that type annotations such as Type[dataclass] don't cause the module to throw a syntax error.
+    # noinspection PyTypeHints
+    dataclasses = Mocker()
+    # noinspection PyTypeHints
+    dataclass = Mocker.make_mock_class(name='dataclass', instance=False)
+    field = Mocker.make_mock_class(name='field', instance=False)
 
 
 class DictObject(dict):
@@ -235,13 +483,19 @@ class DictObject(dict):
         """When an attribute is requested, e.g. ``x.something``, forward it to ``dict['something']``"""
         if hasattr(super(), item):
             return super().__getattribute__(item)
-        return super().__getitem__(item)
+        try:
+            return super().__getitem__(item)
+        except KeyError as ex:
+            raise AttributeError(str(ex))
 
     def __setattr__(self, key, value):
         """When an attribute is set, e.g. ``x.something = 'abcd'``, forward it to ``dict['something'] = 'abcd'``"""
         if hasattr(super(), key):
             return super().__setattr__(key, value)
-        return super().__setitem__(key, value)
+        try:
+            return super().__setitem__(key, value)
+        except KeyError as ex:
+            raise AttributeError(str(ex))
     
 
 class OrderedDictObject(OrderedDict):
@@ -253,13 +507,19 @@ class OrderedDictObject(OrderedDict):
         """When an attribute is requested, e.g. ``x.something``, forward it to ``dict['something']``"""
         if hasattr(super(), item):
             return super().__getattribute__(item)
-        return super().__getitem__(item)
+        try:
+            return super().__getitem__(item)
+        except KeyError as ex:
+            raise AttributeError(str(ex))
     
     def __setattr__(self, key, value):
         """When an attribute is set, e.g. ``x.something = 'abcd'``, forward it to ``dict['something'] = 'abcd'``"""
         if hasattr(super(), key):
             return super().__setattr__(key, value)
-        return super().__setitem__(key, value)
+        try:
+            return super().__setitem__(key, value)
+        except KeyError as ex:
+            raise AttributeError(str(ex))
 
 
 class MockDictObj(DictObject):
@@ -277,6 +537,136 @@ class MockDictObj(DictObject):
 MockDictObj.__name__ = 'dict'
 MockDictObj.__qualname__ = 'dict'
 MockDictObj.__module__ = 'builtins'
+
+
+def _q_copy(obj: K, key: str = None, deep_private: bool = False, quiet: bool = False, fail: bool = False, **kwargs) -> K:
+    # By default, deep_private is false, which means we avoid deep copying any attributes which have keys starting with __
+    # This is because they're usually objects/types we simply can't deepcopy without issues.
+    if not deep_private and key.startswith('__'):
+        log.debug("Not deep copying key '%s' as deep_private is true and key begins with __", key)
+        return obj
+    
+    try:
+        copied = copy.deepcopy(obj)
+        return copied
+    except Exception as ex:
+        if fail:
+            raise ex
+        log_args = "Exception while deep copying object %s ( %s ) - using normal ref. Ex: %s %s", key, obj, type(ex), str(ex)
+        if quiet:
+            log.debug(*log_args)
+        else:
+            log.warning(*log_args)
+    return obj
+
+
+def _copy_class_dict(obj: Type[T], name, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
+    """
+    Internal function used by :func:`.copy_class`
+
+    Make a deep copy of the :class:`.type` / class ``obj`` (for standard classes, which use ``__dict__``)
+    """
+    orig_dict, filt_dict = dict(obj.__dict__), {}
+
+    # Try to deep copy each attribute's value from the original __dict__ in 'orig_dict' into 'filt_dict'.
+    # Attributes that are private (start with '__') will use standard references by default (if deep_private is False),
+    # along with any attributes that fail to be deep copied.
+    for k, v in orig_dict.items():
+        if not deep_copy: break
+        filt_dict[k] = _q_copy(v, key=k, deep_private=deep_private, **kwargs)
+    
+    bases = kwargs.get('bases', obj.__bases__ if kwargs.get('use_bases', True) else (object,))
+    return type(name, bases, filt_dict if deep_copy else orig_dict)
+
+
+def _copy_class_slotted(obj: Type[T], name, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
+    """
+    Internal function used by :func:`.copy_class`
+    
+    Make a deep copy of the :class:`.type` / class ``obj`` (for slotted classes, i.e. those which use ``__slots__``)
+    
+    Based on a StackOverflow answer by user ``nkpro``: https://stackoverflow.com/a/61823543/2648583
+    """
+    slots = obj.__slots__ if type(obj.__slots__) != str else (obj.__slots__,)
+    orig_dict, slotted_members = {}, {}
+    
+    for k, v in obj.__dict__.items():
+        dcval = v if not deep_copy else _q_copy(v, k, deep_private=deep_private, **kwargs)
+        if k not in slots:
+            orig_dict[k] = dcval
+        elif type(v) != MemberDescriptorType:
+            slotted_members[k] = dcval
+    
+    bases = kwargs.get('bases', obj.__bases__ if kwargs.get('use_bases', True) else (object,))
+    new_obj = type(name, bases, orig_dict)
+    for k, v in slotted_members.items():
+        setattr(new_obj, k, v)
+    
+    return new_obj
+
+
+def copy_class(obj: Type[T], name=None, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
+    """
+    Attempts to create a full copy of a :class:`.type` or class, severing most object pointers such as attributes containing a
+    :class:`.dict` / :class:`.list`, along with classes or instances of classes.
+    
+    Example::
+    
+        >>> class SomeClass:
+        >>>     example = 'lorem ipsum'
+        >>>     data = ['hello', 'world']
+        >>>     testing = 123
+        >>>
+        >>> from privex.helpers import copy_class
+        >>> OtherClass = copy_class(SomeClass, name='OtherClass')
+    
+    If you then append to the :class:`.list` attribute ``data`` on both SomeClass and OtherClass - with a different item
+    appended to each class, you'll see that the added item was only added to ``data`` for that class, and not to the other class,
+    proving the original and the copy are independent from each other::
+    
+        >>> SomeClass.data.append('lorem')
+        >>> OtherClass.data.append('ipsum')
+        >>> SomeClass.data
+        ['hello', 'world', 'lorem']
+        >>> OtherClass.data
+        ['hello', 'world', 'ipsum']
+    
+    
+    :param Type[T] obj: A :class:`.type` / class to attempt to duplicate, deep copying each individual object in the class, to
+                        avoid any object pointers shared between the original and the copy.
+    :param str|None name: The class name to use for the copy of ``obj``. If not specified, defaults to the original class name from ``obj``
+    :param bool deep_copy: (Default: ``True``) If True, uses :func:`copy.deepcopy` to deep copy each attribute in ``obj`` to the copy.
+                            If False, then standard references will be used, which may result in object pointers being copied.
+    :param bool deep_private: (Default: ``False``) If True, :func:`copy.deepcopy` will be used on "private" class attributes,
+                              i.e. ones that start with ``__``. If False, attributes starting with ``__`` will not be deep copied,
+                              only a standard assignment/reference will be used.
+    :param kwargs: Additional advanced settings (see ``keyword`` pydoc entries for this function)
+    
+    :keyword bool use_bases: (Default: ``True``) If True, copy the inheritance (bases) from ``obj`` into the class copy.
+    :keyword bool quiet: (Default ``False``) If True, log deep copy errors as ``debug`` level (usually silent in production apps)
+                         instead of the louder ``warning``.
+    :keyword tuple bases: A :class:`.tuple` of classes to use as "bases" (inheritance) for the class copy. If not specified,
+                          copies ``__bases__`` from the original class.
+    :keyword str module: If specified, overrides the module ``__module__`` in the class copy with this string, instead of copying from
+                         the original class.
+    :return Type[T] obj_copy: A deep copy of the original ``obj``
+    """
+    # If no class name was passed as an attribute, then we copy the name from the original class.
+    if not name:
+        name = obj.__name__
+    
+    # Depending on whether 'obj' is a normal class using __dict__, or a slotted class using __slots__, we need to handle the
+    # deep copying of the class differently.
+    if hasattr(obj, '__slots__'):
+        new_obj = _copy_class_slotted(obj, name=name, deep_copy=deep_copy, deep_private=deep_private, **kwargs)
+    else:
+        new_obj = _copy_class_dict(obj, name=name, deep_copy=deep_copy, deep_private=deep_private, **kwargs)
+    
+    # Override the module path string if the user specified 'module' as a kwarg
+    module = kwargs.get('module')
+    if module is not None:
+        new_obj.__module__ = module
+    return new_obj
 
 
 def is_namedtuple(*objs) -> bool:
@@ -681,6 +1071,23 @@ class Dictable:
         # Allow casting into dict()
         for k, v in self.__dict__.items(): yield (k, v,)
 
+    def __getitem__(self, key):
+        """
+        When the instance is accessed like a dict, try returning the matching attribute.
+        """
+        if hasattr(self, key): return getattr(self, key)
+        raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        """
+        When the instance is modified like a dict, try setting the matching attribute.
+        """
+        return setattr(self, key, value)
+
+    def get(self: Union[Type["dataclasses.dataclass"], "dataclasses.dataclass"], key, fallback=None):
+        names = set([f.name for f in dataclasses.fields(self)])
+        return getattr(self, key) if key in names else fallback
+
     @classmethod
     def from_dict(cls, env):
         # noinspection PyArgumentList
@@ -689,222 +1096,252 @@ class Dictable:
             if k in inspect.signature(cls).parameters
         })
 
-
-class Mocker(object):
-    """
-    This mock class is designed to be used either to act as a stand-in "noop" (no operation) object, which
-    could be used either as a drop-in replacement for a failed module / class import, or for certain unit tests.
-    
-    If you need additional functionality such as methods having actual behaviour, you can set attributes on a
-    Mocker instance to either a lambda, or point them at a real function/method::
-    
-        >>> m = Mocker()
-        >>> m.some_func = lambda a: a+1
-        >>> m.some_func(5)
-        6
-    
-    
-    **Example use case - fallback for unimportant module imports**
-    
-    Below is a real world example of using :class:`.Mocker` and :py:func:`privex.helpers.decorators.mock_decorator`
-    to simulate :py:mod:`pytest` - allowing your tests to run under the standard :py:mod:`unittest` framework if
-    a user doesn't have pytest (as long as your tests aren't critically dependent on PyTest).
-    
-    Try importing ``pytest`` then fallback to a mock pytest::
-    
-        >>> try:
-        ...     import pytest
-        ... except ImportError:
-        ...     from privex.helpers import Mocker, mock_decorator
-        ...     print('Failed to import pytest. Using privex.helpers.Mocker to fake pytest.')
-        ...     # Make pytest pretend to be the class 'module' (the class actually used for modules)
-        ...     pytest = Mocker.make_mock_class('module')
-        ...     # To make pytest.mark.skip work, we add the fake module 'mark', then set skip to `mock_decorator`
-        ...     pytest.add_mock_module('mark')
-        ...     pytest.mark.skip = mock_decorator
-        ...
-    
-    Since we added the mock module ``mark``, and set the attribute ``skip`` to point at ``mock_decorator``, the
-    test function ``test_something`` won't cause a syntax error. ``mock_decorator`` will just call test_something()
-    which doesn't do anything anyway::
-     
-        >>> @pytest.mark.skip(reason="this test doesn't actually do anything...")
-        ... def test_something():
-        ...     pass
-        >>>
-        >>> def test_other_thing():
-        ...     if True:
-        ...         return pytest.skip('cannot test test_other_thing because of an error')
-        ...
-        >>>
-    
-    **Generating "disguised" mock classes**
-    
-    If you need the mock class to appear to have a certain class name and/or module path, you can generate
-    "disguised" mock classes using :py:meth:`.make_mock_class` like so:
-    
-        >>> redis = Mocker.make_mock_class('Redis', module='redis')
-        >>> redis
-        <redis.Redis object at 0x7fd7402ea4a8>
-    
-    **A :class:`.Mocker` instance has the following behaviour**
-    
-    * Attributes that don't exist result in a function being returned, which accepts any arguments / keyword args,
-      and simply returns ``None``
-    
-    Example::
-    
-        >>> m = Mocker()
-        >>> repr(m.randomattr('hello', world=123))
-        'None'
-    
-    
-    * Arbitrary attributes ``x.something`` and items ``x['something']`` can be set on an instance, and they will
-      be similarly returned when they're accessed. Attributes and items share the same key/value's, so the
-      following examples are all accessing the same data::
-    
-    Example::
-    
-        >>> m = Mocker()
-        >>> m.example = 'hello'
-        >>> m['example'] = 'world'
-        >>> print(m.example)
-        world
-        >>> print(m['example'])
-        world
-    
-    * You can add arbitrary "modules" to a Mocker instance. With only the ``name`` argument, :py:meth:`.add_mock_module`
-      will add a "module" under the instance, which is really just another :class:`.Mocker` instance.
-    
-    Example::
-    
-        >>> m = Mocker()
-        >>> m.add_mock_module('my_module')
-        >>> m.my_module.example = 'hello'
-        >>> print(m.my_module['example'], m.my_module.example)
-        hello hello
-    
-    
-    """
-    mock_modules: dict
-    mock_attrs: dict
-    
-    def __init__(self, modules: dict = None, attributes: dict = None):
-        self.mock_attrs = {} if attributes is None else attributes
-        self.mock_modules = {} if modules is None else modules
-    
     @classmethod
-    def make_mock_class(cls, name='Mocker', instance=True, **kwargs):
-        """
-        Return a customized mock class or create an instance which appears to be named ``name``
-        
-        Allows code which might check ``x.__class__.__name__`` to believe it's the correct object.
-        
-        Using the kwarg ``module`` you can change the module that the class / instance appears to have been imported
-        from, allowing for quite deceiving fake classes and instances.
-        
-        **Example usage**::
-        
-            >>> redis = Mocker.make_mock_class('Redis', module='redis')
-            >>> # As seen below, the class appears to be called Redis, and even claims to be from the module `redis`
-            >>> redis
-            <redis.Redis object at 0x7fd7402ea4a8>
-            >>> print(f'Module: {redis.__module__} - Class Name: {redis.__class__.__name__}')
-            Module: redis - Class Name: Redis
-        
-        **Creating methods/attributes dynamically**
-        
-        You can set arbitrary attributes to point at a function, or just set them to a lambda::
-        
-            >>> redis.exists = lambda key: 1
-            >>> redis.exists('hello')
-            1
-            >>> redis.hello()  # Non-existent attributes just act as a function that eats any args and returns None
-            None
-            
-        
-        :param name: The name to write onto the mock class's ``__name__`` (and ``__qualname__`` if not specified)
-        :param bool instance: If ``True`` then the disguised mock class will be returned as an instance. Otherwise
-                              the raw class itself will be returned for you to instantiate yourself.
-        :param kwargs: All kwargs (other than ``qualname``) are forwarded to ``__init__`` of the disguised class
-                       if ``instance`` is True.
-        :key str qualname: Optionally specify the "qualified name" to insert into ``__qualname__``. If this isn't
-                           specified, then ``name`` is used for qualname, which is fine for most cases anyway.
-        :key str module: Optionally override the module namespace that the class is supposedly from. If not specified,
-                         then the class will just inherit this module (``privex.helpers.common``)
-        :return:
-        """
-        qualname = kwargs.pop('qualname', name)
-        
-        class OuterMocker(cls):
-            pass
-        
-        OuterMocker.__name__ = name
-        OuterMocker.__qualname__ = qualname
-        
-        if 'module' in kwargs:
-            OuterMocker.__module__ = kwargs['module']
-        
-        return OuterMocker() if instance else OuterMocker
-        
-    def add_mock_module(self, name: str, value=None, mock_attrs: dict = None, mock_modules: dict = None):
-        """
-        Add a fake sub-module to this Mocker instance.
-        
-        Example::
-        
-            >>> m = Mocker()
-            >>> m.add_mock_module('my_module')
-            >>> m.my_module.example = 'hello'
-            >>> print(m.my_module['example'], m.my_module.example)
-            hello hello
-        
-        
-        :param str name: The name of the module to add.
-        :param value: Set the "module" to this object, instead of an instance of :class:`.Mocker`
-        :param dict mock_attrs: If ``value`` is ``None``, then this can optionally contain a dictionary of
-                                attributes/items to pre-set on the Mocker instance.
-        :param dict mock_modules: If ``value`` is ``None``, then this can optionally contain a dictionary of
-                                 "modules" to pre-set on the Mocker instance.
-        """
-        mock_attrs = {} if mock_attrs is None else mock_attrs
-        mock_modules = {} if mock_modules is None else mock_modules
-        
-        self.mock_modules[name] = Mocker(modules=mock_modules, attributes=mock_attrs) if value is None else value
+    def from_list(cls: Type[T], obj_list: Iterable[dict]) -> Generator[T, None, None]:
+        for o in obj_list:
+            yield cls.from_dict(o)
 
-    def __getattribute__(self, item):
-        try:
-            return super().__getattribute__(item)
-        except AttributeError:
-            pass
-        try:
-            if item in super().__getattribute__('mock_modules'):
-                return self.mock_modules[item]
-        except AttributeError:
-            pass
-        try:
-            if item in super().__getattribute__('mock_attrs'):
-                return self.mock_attrs[item]
-        except AttributeError:
-            pass
+
+class DictDataClass(Dictable):
+    """
+    This is a base class for use with Python 3.7+ :class:`.dataclass` 's, designed to make dataclasses more interoperable with
+    existing dictionaries, and allows them to be used like dictionaries, similar to :class:`.Dictable`, but more powerful /
+    flexible.
+    
+    The most notable difference between this and :class:`.Dictable` - is that DictDataClass uses the attribute :attr:`.raw_data` on your
+    dataclass to store any excess attributes when your dataclass is initialised from a dictionary with :meth:`.from_dict`
+    or :meth:`.from_list`, allowing you to retrieve any dictionary keys which couldn't be stored on your dataclass instance.
+    
+    Basic Example::
+    
+        >>> from dataclasses import dataclass, field
+        >>> from privex.helpers import DictDataClass, DictObject
+        >>> from typing import Union
+        >>>
+        >>> @dataclass
+        >>> class ExampleDataclass(DictDataClass):
+        ...     example: str = 'hello world'
+        ...     lorem: int = 999
+        ...     raw_data: Union[dict, DictObject] = field(default_factory=DictObject, repr=False)
+        ...     ### ^ The raw, unmodified data that was passed as kwargs, as a dictionary
+        ...     ### For DictDataClass to work properly, you must include the raw_data dataclass field in your dataclass.
+        ...
+        >>> edc = ExampleDataclass.from_dict(dict(example='test', hello='this is an example'))
+        >>> edc.example
+        'test'
+        >>> dict(edc)
+        {'example': 'test', 'lorem': 999}
+    
+    Thanks to :attr:`.raw_data` - you can access any extraneous items contained within the dictionary used in :meth:`.from_dict`
+    as if they were part of your dataclass. You can also access and set any attribute using standard dictionary item syntax with square
+    brackets like so::
+    
+        >>> edc.hello               # This is not in the original dataclass attributes, but is proxied from raw_data
+        'this is an example'
+        >>> edc['hello']            # Also works with item / dict syntax
+        'this is an example'
+        >>> edc['hello'] = 'world'  # You can set attributes using "key" / dict-like syntax
+        >>> edc.hello
+        'world'
+        >>> edc.hello = 'test'      # You can also set raw_data keys using standard attribute dot-notation syntax.
+        >>> edc['hello']
+        'test'
+     
+    **Dictionary casting modes / ``__iter__`` configuration modes**
+    
+    There are a total of four (4) :class:`.dict`` conversion modes that you may use for a given class.
+    
+    These modes control whether :attr:`.raw_data` is used when an instance is being casted via ``dict(obj)``, the order in which it's
+    merged with the instance attributes, along with the option to include **just** the dataclass attributes, or **just** the raw_data.
+    
+    Available :attr:`.DictConfig.dict_convert_mode` options::
+    
+        * **Fallback / Dataclass / Instance Attributes Only** - When ``dict_convert_mode`` is empty (``None`` or ``""``), or
+          it can't be matched against a pre-defined conversion mode, when an instance is converted into a :class:`.dict` - only the
+          attributes of the instance are used - :attr:`.raw_data` keys are ignored.
+          
+          ``dict_convert_mode`` settings: ``None``, ``""``, ``"none"`` or any other invalid option.
         
-        return lambda *args, **kwargs: None
+        * Raw Data Only ( ``raw`` / ``raw_data`` ) - When this mode is used, converting the instance to a ``dict`` will
+          effectively just return ``raw_data``, while still enforcing the ``dict_exclude`` and ``dict_listify`` settings.
+          
+          ``dict_convert_mode`` settings: ``"raw"``, ``"raw_data"``, ``"rawdata"``, or any other value beginning with ``raw``
+        
+        
+        * Merge with Dataclass Priority - In this mode, both :attr:`.raw_data` and the instance's attributes are used when converting
+          into a :class:`.dict` - first the :attr:`.raw_data` dictionary is taken, and we merge the instance attributes on top of it.
+          
+          This means the instance/dataclass attributes take priority over the ``raw_data`` attributes, which will generally result
+          in only ``raw_data`` keys which don't exist on the instance having their values used in the final ``dict``.
+        
+          ``dict_convert_mode`` settings: ``"merge_dc"`` / ``"merge_ins"`` / ``"merge_dataclass"``
+        
+        * Merge with :attr:`.raw_data` Priority - In this mode, both :attr:`.raw_data` and the instance's attributes are used when
+          converting into a :class:`.dict` - first the instance attributes are converted into a dict, then we merge the
+          :attr:`.raw_data` dictionary on top of it.
+          
+          This means the :attr:`.raw_data` keys take priority over the instance/dataclass attributes, which will generally result in
+          only instance attributes which don't exist in ``raw_data`` having their values used in the final ``dict``.
+        
+          ``dict_convert_mode`` settings: ``"merge_rd"`` / ``"merge_raw"`` / ``"merge_raw_data"``
+    
+    By default, the conversion mode is set to ``merge_dc``, which means when an instance is converted into a :class:`.dict` - the
+    dataclass instance attributes are merged on top of the raw_data dictionary, meaning raw_data is included, but dataclass attributes
+    take priority over :attr:`.raw_data` keys.
+    
+    **Changing the conversion mode**
+    
+        >>> from dataclasses import dataclass, field
+        >>>
+        >>> @dataclass
+        >>> class MyDataclass(DictDataClass):
+        ...     class DictConfig:
+        ...         dict_convert_mode = 'merge_dc'
+        ...
+        ...     hello: str
+        ...     lorem: str = 'ipsum'
+        ...     raw_data: Union[dict, DictObject] = field(default_factory=DictObject, repr=False)
+        >>> dc = MyDataclass.from_dict(dict(hello='test', example=555, test='testing'))
+        >>> dc.hello
+        'test'
+        >>> dc.hello = 'replaced'
+        >>> dict(dc)
+        {'hello': 'replaced', 'example': 555, 'test': 'testing', 'lorem': 'ipsum'}
+        >>> dc.DictConfig.dict_convert_mode = 'merge_raw'
+        {'hello': 'test', 'lorem': 'ipsum', 'example': 555, 'test': 'testing'}
+        >>> dc.DictConfig.dict_convert_mode = None
+        {'hello': 'replaced', 'lorem': 'ipsum'}
+    
+    """
+    raw_data: Union[dict, DictObject]
+    
+    class _DictConfig:
+        dict_convert_mode: Optional[str] = "merge_dc"
+        dict_listify: List[str] = []
+        """
+        Keys which contain iterable's (list/set etc.) of objects such as those based on :class:`.DictDataClass` / :class:`.Dictable`,
+        which should be converted into a list of :class:`.dict`'s using ``dict()``.
+        
+        Example:
+        
+            >>> @dataclass
+            >>> class Order(DictDataClass):
+            ...     hello: str = 'world'
+            >>>
+            >>> class MyDataclass(DictDataClass):
+            ...     class DictConfig:
+            ...         dict_listify = ['orders']
+            ...     lorem = 'ipsum'
+            ...     orders: list = [Order(), Order('test')]
+            ...
+        """
+        listify_cast: Union[Type, callable] = DictObject
+        dict_exclude_base: List[str] = ['raw_data', 'DictConfig', '_DictConfig']
+        dict_exclude: List[str] = []
+        """
+        A list of attributes / raw_data keys to exclude when your instance is converted into a :class:`.dict`
+        """
+    
+    @property
+    def _dc_dict_config(self) -> Union[_DictConfig, DictObject]:
+        """Internal property used to merge the base DictDataClass _DictConfig with the current instance's DictConfig"""
+        base = {k: v for k, v in self._DictConfig.__dict__.items() if not k.startswith('__')}
+        inst = {k: v for k, v in self.DictConfig.__dict__.items() if not k.startswith('__')}
+        return DictObject({**base, **inst})
+    
+    DictConfig = copy_class(_DictConfig, name='DictConfig', quiet=True)
+
+    def __iter__(self):
+        # The raw_data attribute isn't required, and isn't guaranteed to have been set on a dataclass, so
+        # we fallback to a blank DictObject if it's not found.
+        dict_rd = DictObject()
+        if hasattr(self, 'raw_data'):
+            dict_rd = dict(self.raw_data)
+        dict_dc = dataclasses.asdict(self, dict_factory=dict)
+
+        from privex.helpers import empty
+        dconf = self._dc_dict_config
+        mode = "" if empty(dconf.dict_convert_mode, True, True) else str(dconf.dict_convert_mode).lower()
+        # By default, if dict_convert_mode is None, or doesn't match any of the pre-defined modes, then it
+        # defaults to dict_dc (the instance's dataclass attributes, converted into a dictionary)
+        itr = dict_dc
+        if mode in ['merge_dc', 'merge_ins', 'merge_dataclass']:
+            itr = {**dict_rd, **dict_dc}
+        elif mode in ['merge_rd', 'merge_raw', 'merge_raw_data']:
+            itr = {**dict_dc, **dict_rd}
+        elif mode.startswith('raw'):
+            itr = dict_rd
+        
+        exclude = dconf.dict_exclude_base + dconf.dict_exclude
+        
+        for k, v in itr.items():
+            # Don't include any dict keys which are listed in dict_exclude/dict_exclude_base
+            if k in exclude: continue
+            # If this key is listed in dict_listify, then we iterate over the current value, casting
+            # each element using the type/callable specified in DictConfig.listify_case
+            # (defaults to DictObject, which is backwards compatible with code requiring dict's)
+            if k in dconf.dict_listify: v = [dconf.listify_cast(o) for o in v]
+            yield (k, v,)
+    
+    def __getitem__(self, key):
+        """
+        When the instance is accessed like a dict, try returning the matching attribute.
+        If the attribute doesn't exist, or the key is an integer, try and pull it from raw_data
+        """
+        if hasattr(self, 'raw_data') and type(key) is int: return self.raw_data[key]
+        if hasattr(self, key): return getattr(self, key)
+        if hasattr(self, 'raw_data') and key in self.raw_data: return self.raw_data[key]
+        raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        """
+        When the instance is modified like a dict, try setting the matching attribute.
+        If the key is an int, or exists in raw_data, then set it on raw_data instead of as a dataclass attribute.
+        """
+        if hasattr(self, 'raw_data') and type(key) is int:
+            self.raw_data[key] = value
+            return
+        
+        if hasattr(self, 'raw_data') and key in self.raw_data:
+            self.raw_data[key] = value
+            return
+        
+        return setattr(self, key, value)
+    
+    def __getattr__(self, item):
+        # object.__getattribute__()
+        def ha(key):
+            return key in self.__dict__
+        
+        if ha('raw_data') and type(item) is int:
+            return self.__dict__['raw_data'][item]
+        if ha(item):
+            return self.__dict__[item]
+        if ha('raw_data') and item in self.__dict__['raw_data']:
+            return self.__dict__['raw_data'][item]
+        raise AttributeError(item)
     
     def __setattr__(self, key, value):
-        if key in ['mock_attrs', 'mock_modules']:
-            return super().__setattr__(key, value)
-        m = super().__getattribute__('mock_attrs')
-        m[key] = value
+        def ha(k): return k in self.__dict__
+        
+        if ha(key):
+            self.__dict__[key] = value
+            return
+        
+        if ha('raw_data'):
+            self.__dict__['raw_data'][key] = value
+            return
+        
+        return super().__setattr__(key, value)
     
-    def __getitem__(self, item):
-        return self.__getattribute__(item)
+    @classmethod
+    def from_dict(cls: Type[dataclass], obj):
+        names = set([f.name for f in dataclasses.fields(cls)])
+        clean = {k: v for k, v in obj.items() if k in names}
+        if 'raw_data' in names:
+            clean['raw_data'] = DictObject(clean.get('raw_data')) if 'raw_data' in clean else DictObject(obj)
+        return cls(**clean)
     
-    def __setitem__(self, key, value):
-        self.__setattr__(key, value)
 
-    @property
-    def __name__(self):
-        return self.__class__.__name__
-
-
+DictDataclass = DictDataClass
 
