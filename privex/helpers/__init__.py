@@ -122,6 +122,11 @@ try:
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "geoip", not loading GeoIP2 helpers')
 
+try:
+    from privex.helpers.thread import *
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "thread", not loading python threading helpers')
+
 
 def _setup_logging(level=logging.WARNING):
     """
@@ -143,7 +148,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.13.0'
+VERSION = '2.14.0'
 
 
 

@@ -22,9 +22,9 @@ Various functions/classes which convert/parse objects from one type into another
 
 
 """
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
-from typing import Optional, Union
+from typing import Optional, Union, AnyStr
 
 
 from privex.helpers.common import empty, is_true, stringify
@@ -38,6 +38,8 @@ DAY = HOUR * 24
 MONTH = DAY * 30
 YEAR = DAY * 365
 DECADE = YEAR * 10
+
+SUPPORTED_DT_TYPES = Union[str, bytes, int, datetime, date, AnyStr]
 
 
 def convert_datetime(d, if_empty=None, fail_empty=False, **kwargs) -> Optional[datetime]:
@@ -79,6 +81,10 @@ def convert_datetime(d, if_empty=None, fail_empty=False, **kwargs) -> Optional[d
         if d.tzinfo is None and _tzinfo is not None:
             d = d.replace(tzinfo=_tzinfo)
         return d
+    
+    # For datetime.date objects, we first convert them into a string, then we can parse them into a datetime + set tzinfo
+    if isinstance(d, date):
+        d = str(d)
 
     d = stringify(d) if isinstance(d, bytes) else d
     
@@ -110,9 +116,23 @@ def convert_datetime(d, if_empty=None, fail_empty=False, **kwargs) -> Optional[d
     if empty(d):
         if fail_empty: raise AttributeError("Error converting datetime. Parameter 'd' was empty!")
         return if_empty
+    
+    try:
+        log.debug("Passed object is not a supported type. Object type: %s || object repr: %s", type(d), repr(d))
+        log.debug("Calling convert_datetime with object casted to string: %s", str(d))
+        _d = convert_datetime(str(d), fail_empty=True)
+        d = _d
+    except Exception as e:
+        log.info("Converted passed object with str() to try and parse string version, but failed.")
+        log.info("Exception thrown from convert_datetime(str(d)) was: %s %s", type(e), str(e))
+        d = None   # By setting d to None, it will trigger the ValueError code below.
+    
     if not isinstance(d, datetime):
         raise ValueError('Timestamp must be either a datetime object, or an ISO8601 string...')
     return d
+
+
+parse_datetime = parse_date = convert_datetime
 
 
 def convert_unixtime_datetime(d: Union[str, int, float, Decimal], if_empty=None, fail_empty=False) -> datetime:
@@ -134,6 +154,9 @@ def convert_unixtime_datetime(d: Union[str, int, float, Decimal], if_empty=None,
     return t
 
 
+parse_unixtime = parse_epoch = convert_epoch_datetime = convert_unixtime_datetime
+
+
 def convert_bool_int(d, if_empty=0, fail_empty=False) -> int:
     """Convert a boolean ``d`` into an integer (``0`` for ``False``, ``1`` for ``True``)"""
     if type(d) is int: return 1 if d >= 1 else 0
@@ -153,6 +176,7 @@ def convert_int_bool(d, if_empty=False, fail_empty=False) -> bool:
 
 __all__ = [
     'convert_datetime', 'convert_unixtime_datetime', 'convert_bool_int', 'convert_int_bool',
+    'parse_date', 'parse_datetime', 'parse_epoch', 'parse_unixtime', 'convert_epoch_datetime',
     'MINUTE', 'HOUR', 'DAY', 'MONTH', 'YEAR', 'DECADE',
 ]
 

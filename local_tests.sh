@@ -52,7 +52,7 @@ USE_PYENV=$((USE_PYENV))
 # PY_VERS is an array which defines the local system python executables for each python version to run the tests for.
 [ -z ${PY_VERS+x} ] && PY_VERS=("python3.6" "python3.7" "python3.8")
 # PYENV_VERS is an array of Python version numbers to install & use for running tests if 'pyenv' is available.
-[ -z ${PYENV_VERS+x} ] && PYENV_VERS=("3.6.7" "3.7.1" "3.8.0")
+[ -z ${PYENV_VERS+x} ] && PYENV_VERS=("3.6.9" "3.7.1" "3.8.0")
 
 has_command pyenv && HAS_PYENV=1 || HAS_PYENV=0
 

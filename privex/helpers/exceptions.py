@@ -141,3 +141,25 @@ class InvalidHost(PrivexException, ValueError):
     """Raised when a passed IP address or hostname/domain is invalid."""
     pass
 
+
+class LockConflict(PrivexException):
+    """
+    Raised when attempting to acquire a lock with a :class:`threading.Lock` or :class:`asyncio.Lock`, and the lock object
+    is already locked.
+
+    This would only be raised either when non-blocking acquisition was requested, or the blocking wait timed out.
+    """
+
+
+class LockWaitTimeout(LockConflict):
+    """
+    Sub-class of :class:`.LockConflict` - only to be raised when a timeout has been reached while waiting
+    to acquire a :class:`threading.Lock`
+    """
+
+
+class EventWaitTimeout(PrivexException):
+    """
+    Raised when a timeout has been reached while waiting for an event (:class:`threading.Event`) to be signalled.
+    """
+

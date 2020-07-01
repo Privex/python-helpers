@@ -61,13 +61,13 @@ async def test_cache_update_timeout(rcache: AsyncMemcachedCache):
     """Test that cache.update_timeout extends timeouts correctly"""
     k, v = 'test_cache_update_timeout', 'update expiry test'
     _cleanup(k)
-    await rcache.set(k, v, timeout=3)
+    await rcache.set(k, v, timeout=4)
     
     assert await rcache.get(k) == v
     await asyncio.sleep(1.5)
     
     await rcache.update_timeout(k, timeout=10)
-    await asyncio.sleep(2.5)
+    await asyncio.sleep(3.5)
     assert await rcache.get(k) == v
 
 
