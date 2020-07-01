@@ -195,7 +195,9 @@ class TestThreading(PrivexBaseCase):
         log.debug(" >>> thread 1 acquire")
         t1 = self._mk_locker(shared_lock, timeout=4, fail=False, name="timeout_t1")
         t1.emit_lock()
-        sleep(0.2)
+        # Check the LockCheck result from the thread queue
+        res: LockCheck = t1.out_queue.get(block=True, timeout=2)
+        self.assertTrue(res.was_locked)
         self.assertTrue(shared_lock.locked())       # Confirm our lock is locked
         # Now we try and acquire the lock with a second thread
         log.debug(" >>> thread 2 acquire (test lock timeout fail)")
