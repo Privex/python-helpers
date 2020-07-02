@@ -8,7 +8,7 @@ global cache adapter instance has been setup. This means you can use the various
 without having to configure a cache adapter.
 
 Available Cache Adapters
-----------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Standard Synchronous Adapters**
 
@@ -51,7 +51,7 @@ Three AsyncIO cache adapters are included by default - :class:`.AsyncMemoryCache
 
 
 Setting / updating the global cache adapter instance
-----------------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 First import the ``cache`` module.
 
@@ -99,7 +99,7 @@ from a non-async function.
 
 
 Plug-n-play usage
------------------
+^^^^^^^^^^^^^^^^^
 
 As explained near the start of this module's documentation, you don't have to set the global adapter if you only
 plan on using the simple :class:`.MemoryCache` adapter.
@@ -166,6 +166,12 @@ control, for example:
         +===================================================+
 
     Copyright 2019     Privex Inc.   ( https://www.privex.io )
+
+
+Cache API Docs
+^^^^^^^^^^^^^^
+
+(the above heading is for sidebar display purposes on the docs)
 
 
 """

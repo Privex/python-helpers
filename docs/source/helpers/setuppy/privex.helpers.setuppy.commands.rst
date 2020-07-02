@@ -1,5 +1,5 @@
-privex.helpers.setuppy.commands
-===============================
+Distutils/setup.py Command Plugins
+==================================
 
 .. automodule:: privex.helpers.setuppy.commands
 
@@ -23,6 +23,5 @@ privex.helpers.setuppy.commands
    
    
 
-   
    
    

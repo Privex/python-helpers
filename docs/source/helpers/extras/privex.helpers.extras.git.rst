@@ -5,11 +5,20 @@ privex.helpers.extras.git
 
 
    
+Functions / Classes / Attributes
+--------------------------------
    
    
    
-   
-   
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree: git
+
+      get_current_commit
+      get_current_branch
+      get_current_tag
+      _cwd_git
 
    
    
@@ -18,11 +27,9 @@ privex.helpers.extras.git
    .. autosummary::
       :toctree: git
    
-      AsyncGit
-      Git
-   
-   
+      _AsyncGit
 
    
+
    
    

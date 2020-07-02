@@ -5,7 +5,7 @@ from typing import Union, Coroutine, Awaitable, Any, TypeVar, Callable
 Number = Union[Decimal, int, float]
 """Shorter alias for ``Union[Decimal, int, float]``"""
 
-NumberStr = Union[Decimal, int, float, str]
+AnyNum = NumberStr = Union[Decimal, int, float, str]
 """Shorter alias for ``Union[Decimal, int, float, str]``"""
 
 VAL_FUNC_CORO = Union[Any, callable, Coroutine, Awaitable]
@@ -16,7 +16,7 @@ IP_OR_STR = Union[str, IPv4Address, IPv6Address]
 NET_OR_STR = Union[str, IPv4Network, IPv6Network]
 """Shorthand union which accepts :class:`.IPv4Network`, :class:`.IPv6Network` or :class:`str`"""
 IP_NET_OR_STR = Union[str, IPv4Address, IPv6Address, IPv4Network, IPv6Network]
-"""Combined :py:type:`.IP_OR_STR` + :py:type:`.NET_OR_STR`"""
+"""Combined :attr:`.IP_OR_STR` + :attr:`.NET_OR_STR`"""
 
 T = TypeVar('T')
 """Plain generic type variable for use in helper functions"""

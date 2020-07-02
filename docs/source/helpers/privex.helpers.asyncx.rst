@@ -1,8 +1,9 @@
-privex.helpers.asyncx
-=====================
+AsyncIO Helpers / Wrappers
+==========================
 
 .. automodule:: privex.helpers.asyncx
-
+   :members:
+   :undoc-members:
 
    
    
@@ -38,6 +39,5 @@ privex.helpers.asyncx
    
    
 
-   
    
    

@@ -1,8 +1,8 @@
-privex.helpers.django
-=====================
+Django Helpers
+==============
 
 .. automodule:: privex.helpers.django
-
+   :members:
 
    
    
@@ -25,6 +25,5 @@ privex.helpers.django
    
    
 
-   
    
    

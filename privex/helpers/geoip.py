@@ -1,6 +1,9 @@
 """
 Various helper functions for use with Maxmind's GeoIP2 Library
 
+Getting started with our GeoIP2 wrapper
+---------------------------------------
+
 Basic Usage::
 
     >>> from privex.helpers import geoip
@@ -15,6 +18,10 @@ close the GeoIP2 databases to save memory::
 
     >>> geoip.cleanup
 
+
+Using the GeoIP2 :func:`.geoip_manager` context manager
+-------------------------------------------------------
+
 Alternatively, you can use the context manager :func:`.geoip_manager` which will automatically call :func:`.cleanup`
 at the end of a ``with`` block::
 
@@ -24,7 +31,15 @@ at the end of a ``with`` block::
     ...
     Postcode: 173 11 || Lat: 59.3333 || Long: 18.05
 
+
+Accessing the underlying :mod:`geoip2` library instances
+--------------------------------------------------------
+
 If our wrappers don't provide certain features you need, you can easily access the raw GeoIP2 reader instances.
+
+
+With our context manager
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 Accessing :class:`geoip2.database.Reader` via the context manager::
 
@@ -33,6 +48,10 @@ Accessing :class:`geoip2.database.Reader` via the context manager::
     ...     data: geoip2.models.City = geo.city('95.216.3.171')
     ...     print('Continent:', data.continent.names.get('en'), 'Time Zone:', data.location.time_zone)
     Continent: Europe Time Zone: Europe/Helsinki
+
+
+Directly, via the :mod:`privex.helpers.plugin` module
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Accessing :class:`geoip2.database.Reader` via the plugin module::
     
@@ -44,6 +63,7 @@ Accessing :class:`geoip2.database.Reader` via the plugin module::
     >>> # To close the ASN database properly when you're done, call 'plugin.close_geoip' with 'asn'
     >>> plugin.close_geoip('asn')
     True
+
 
 
 **Copyright**::

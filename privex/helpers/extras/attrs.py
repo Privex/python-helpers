@@ -1,7 +1,7 @@
 """
-Functions/classes which depend on the package ``attrs`` (`Attrs.org`_)
+Functions/classes which depend on the package ``attrs``
+( `Attrs.org <https://www.attrs.org/en/stable/>`_ )
 
-.. _Attrs.org: https://www.attrs.org/en/stable/
 
 **Copyright**::
 

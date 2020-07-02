@@ -2,7 +2,7 @@ privex.helpers.net
 ==================
 
 .. automodule:: privex.helpers.net
-
+   :members:
 
    
    
@@ -15,6 +15,11 @@ privex.helpers.net
       :toctree: net
    
       asn_to_name
+      get_rdns
+      get_rdns_multi
+      resolve_ip
+      resolve_ips
+      resolve_ips_multi
       ip4_to_rdns
       ip6_to_rdns
       ip_is_v4
@@ -28,6 +33,5 @@ privex.helpers.net
    
    
 
-   
    
    

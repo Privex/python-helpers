@@ -1,5 +1,5 @@
-privex.helpers.exceptions
-=========================
+Exceptions (Use them in your project!)
+======================================
 
 .. automodule:: privex.helpers.exceptions
 
@@ -20,6 +20,7 @@ privex.helpers.exceptions
    .. rubric:: Exceptions
 
    .. autosummary::
+      :toctree: exceptions
    
       BaseDNSException
       BoundaryException
@@ -33,5 +34,4 @@ privex.helpers.exceptions
       NotConfigured
       PrivexException
       SysCallError
-   
    

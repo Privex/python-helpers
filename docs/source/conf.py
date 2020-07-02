@@ -53,8 +53,16 @@ extensions = [
 ]
 
 autosummary_generate = True
+autosummary_generate_overwrite = False
 
 autodoc_default_flags = ['members']
+
+
+# Silence stupid "duplicate description" and similar warnings. Adding :noindex: like it demands just causes reference links to break...
+suppress_warnings = [
+    'app.add_node',  # Silence stupid "duplicate description" and similar warnings. Adding :noindex: causes reference links to break...
+    'ref.python'     # Silence "more than one target found for cross-reference" warnings
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

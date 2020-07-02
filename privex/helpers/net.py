@@ -267,7 +267,6 @@ def ping(ip: str, timeout: int = 30) -> bool:
 
 def resolve_ips(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) -> List[str]:
     """
-    
     With just a single hostname argument, both IPv4 and IPv6 addresses will be returned as strings::
     
         >>> resolve_ips('www.privex.io')
@@ -281,6 +280,7 @@ def resolve_ips(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=Fa
     
     The ``v4_convert`` option is ``False`` by default, which prevents ``::ffff:`` style IPv6 wrapped IPv4 addresses being
     returned when you request version ``v6``::
+    
         >>> resolve_ips('microsoft.com')
         ['40.76.4.15', '40.112.72.205', '13.77.161.179', '40.113.200.201', '104.215.148.63']
         >>> resolve_ips('microsoft.com', 'v6')
@@ -323,6 +323,7 @@ def resolve_ips(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=Fa
                             passed IP of the wrong version will raise :class:`.AttributeError`
                             
                             Choices:
+                            
                               * **IPv4 Options**: ``4`` (int), ``'v4'``, ``'4'`` (str), ``'ipv4'``, ``'inet'``, ``'inet4'``
                               * **IPv6 Options**: ``6`` (int), ``'v6'``, ``'6'`` (str), ``'ipv6'``, ``'inet6'``
     

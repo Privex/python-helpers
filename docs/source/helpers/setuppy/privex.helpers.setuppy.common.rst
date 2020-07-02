@@ -1,5 +1,5 @@
-privex.helpers.setuppy.common
-=============================
+Packaging Helper Functions (common)
+===================================
 
 .. automodule:: privex.helpers.setuppy.common
 
@@ -26,6 +26,5 @@ privex.helpers.setuppy.common
    
    
 
-   
    
    

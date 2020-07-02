@@ -20,6 +20,7 @@ Methods
 
     ~RedisCache.__init__
     ~RedisCache.get
+    ~RedisCache.get_or_set
     ~RedisCache.remove
     ~RedisCache.set
     ~RedisCache.update_timeout

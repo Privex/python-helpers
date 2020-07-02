@@ -8,7 +8,7 @@
    .. rubric:: Attributes
 
    .. autosummary::
-      :toctree: {{ name | lower }}
+      :toctree: {{ name }}
    {% for item in attributes %}
       ~{{ name }}.{{ item }}
    {%- endfor %}

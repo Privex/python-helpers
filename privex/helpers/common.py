@@ -366,9 +366,7 @@ def extract_settings(prefix: str, _settings=settings, defaults=None, merge_conf=
         {'host': 'localhost', 'port': 6379}
 
 
-    Example uses
-    ^^^^^^^^^^^^
-
+    **Example uses**
 
     Example settings module at ``myapp/settings.py``
 
@@ -423,8 +421,8 @@ def extract_settings(prefix: str, _settings=settings, defaults=None, merge_conf=
     We'll now call ``extract_settings`` using :attr:`os.environ` converted into a dictionary, and attempt to quickly
     obtain the database settings - with lowercase keys, and without their ``DB_`` prefix.
 
-    Below, you'll see extract_settings extracted all keys starting with DB_, removed the DB_ prefix, converted the
-    remaining portion of the key to lowercase, and also merged in the default setting 'host' since DB_HOST didn't exist.
+    Below, you'll see extract_settings extracted all keys starting with ``DB_``, removed the ``DB_`` prefix, converted the
+    remaining portion of the key to lowercase, and also merged in the default setting 'host' since ``DB_HOST`` didn't exist.
 
     The outputted dictionary is perfect for passing to many database library constructors::
 

@@ -1,3 +1,7 @@
+"""
+Core classes/functions used by AsyncIO Cache Adapters, including the base class :class:`.AsyncCacheAdapter`
+
+"""
 import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Optional

@@ -13,10 +13,12 @@
     privex.helpers.django
     privex.helpers.exceptions
     privex.helpers.extras
+    privex.helpers.geoip
     privex.helpers.net
     privex.helpers.plugin
     privex.helpers.settings
     privex.helpers.setuppy
+    privex.helpers.thread
     privex.helpers.types
 
 

@@ -1,3 +1,122 @@
+"""
+Helper functions and classes to ease the use :class:`.Thread`'s with python's :mod:`threading` library
+
+Utilities for working with :class:`.Event`
+------------------------------------------
+
+
+Classes
+^^^^^^^
+
+    ==============================   ==================================================================================================
+    Class                            Description
+    ==============================   ==================================================================================================
+    :class:`.BetterEvent`            **BetterEvent** is a sub-class of :class:`.Event` with more flexibility + features
+    :class:`.InvertibleEvent`        (this is just an alias for :class:`.BetterEvent`)
+    ==============================   ==================================================================================================
+
+
+Functions
+^^^^^^^^^
+
+    ==============================   ==================================================================================================
+    Function                         Description
+    ==============================   ==================================================================================================
+    :func:`.event_multi_wait`        Allows waiting for more than one :class:`.Event` / :class:`.BetterEvent` at once
+    :func:`.event_multi_wait_all`    A wrapper function for :func:`.event_multi_wait` with ``trigger='and'`` as default
+    :func:`.event_multi_wait_any`    A wrapper function for :func:`.event_multi_wait` with ``trigger='or'`` as default
+    ==============================   ==================================================================================================
+
+
+Utilities for working with :class:`.Lock` thread locks
+------------------------------------------------------
+
+In the Python standard library, you can only use context management directly against a :class:`.Lock` object, which means
+you're unable to specify things such as a timeout, whether or not to block, nor a built-in option to request an exception
+to be raised if the lock can't be acquired.
+
+And thus, :func:`.lock_acquire_timeout` was created - to solve all of the above problems, in one easy to use context management
+function :)
+
+The :func:`.lock_acquire_timeout` function - a context manager ( ``with lock_acquire_timeout(lock)`` ), is designed to allow use of
+context management with standard :class:`threading.Lock` objects, with the ability to specify important parameters such as:
+ 
+ * whether or not to **block** while acquiring the lock
+ * an optional timeout - so that it gives up waiting for the ``lock.acquire`` after so many seconds
+ * whether to raise :class:`.LockWaitTimeout` if the ``acquire`` times out instead of returning ``None``
+
+Functions
+^^^^^^^^^
+
+    ==============================   ==================================================================================================
+    Function                         Description
+    ==============================   ==================================================================================================
+    :func:`.lock_acquire_timeout`    Flexible context manager for acquiring :class:`.Locks`'s ``with lock_acquire_timeout(lock)``
+    ==============================   ==================================================================================================
+
+Utilities for working with :class:`.Thread` thread objects
+----------------------------------------------------------
+
+Using :class:`.SafeLoopThread` for looping threads with :class:`queue.Queue`'s + stop/pause support
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+First example - we'll create a sub-class of :class:`.SafeLoopThread` called ``MyThread``::
+
+    >>> # Create a sub-class of SafeLoopThread, and implement a loop() method
+    >>> class MyThread(SafeLoopThread):
+    ...     loop_sleep = 2    # 'run' will wait this many seconds between each run of your loop(). set to 0 to disable loop sleeps
+    ...     def loop(self):
+    ...         print("I'm looping!")
+    ...
+    >>> t = MyThread()   # Construct the class
+
+Once we start the thread, we'll see that ``I'm looping!`` will be printed about once every 2 seconds, since that's what
+we set ``loop_sleep`` to::
+
+    >>> t.start()
+    I'm looping!
+    I'm looping!
+    I'm looping!
+
+Using :meth:`.SafeLoopThread.emit_pause` - we can pause the loop, which will silence the ``I'm looping!`` messages::
+
+    >>> t.emit_pause()
+    >>> # No output because the loop is now paused
+
+To start the loop again, we can simply unpause it with :meth:`.SafeLoopThread.emit_unpause`::
+
+    >>> t.emit_unpause()
+    I'm looping!
+    I'm looping!
+    I'm looping!
+
+Once we're done with ``MyThread``, unlike a normal :class:`.Thread`, we can ask the thread to shutdown gracefully
+using :meth:`.SafeLoopThread.emit_stop` like so::
+
+    >>> t.is_alive()    # First we'll confirm the thread is still running
+    True
+    >>> t.emit_stop()
+    I'm looping!
+    >>> # The .loop method will finish it's current iteration (unless you add additional ``should_stop`` checks in the loop)
+    >>> # and then shutdown the thread by returning from ``.run``
+    >>> t.is_alive()    # We can now see that the thread has shutdown as we requested it to.
+    False
+
+
+
+Classes
+^^^^^^^
+
+    ==============================   ==================================================================================================
+    Class                            Description
+    ==============================   ==================================================================================================
+    :class:`.StopperThread`          A :class:`.Thread` base class which allows you easily add stop/pause support to your own threads
+    :class:`.SafeLoopThread`         A :class:`.StopperThread` based class which runs ``.loop`` in a loop, with stop/start support
+    ==============================   ==================================================================================================
+
+
+
+"""
 import queue
 import threading
 import time
@@ -75,6 +194,7 @@ class BetterEvent(Event):
     
      * The ``wait_on`` constructor parameter allows you to choose what flag states that the standard :meth:`.wait` will
        trigger upon:
+       
         * ``'set'`` - the default - works like :class:`threading.Event`, :meth:`.wait` only triggers when the event is in
           the "set" state, i.e. :attr:`._flag` is ``True``
         * ``'clear'`` - opposite of the default - works opposite to :class:`threading.Event`, :meth:`.wait` only triggers when the event
@@ -94,6 +214,42 @@ class BetterEvent(Event):
      
      * New :meth:`.wait_clear` method, this works opposite to the classic :class:`threading.Event` ``wait`` method - it's only triggered
        when :attr:`._flag` is set to ``False`` (cleared) - no matter what ``wait_on`` setting is active.
+    
+    
+    **Example Usage**
+    
+    Below is a very simple thread class using :class:`.SafeLoopThread` which uses a :class:`.BetterEvent` so we can signal
+    when it can start running, and when it's allowed to restart itself::
+    
+        >>> from privex.helpers import BetterEvent, SafeLoopThread
+        >>>
+        >>> class MyThread(SafeLoopThread):
+        ...     def __init__(self, *args, trig, **kwargs):
+        ...         self.trig = trig
+        ...         super().__init__(*args, **kwargs)
+        ...     def loop(self):
+        ...         print("Waiting for trig to become set before doing stuff...")
+        ...         self.trig.wait()   # Same behaviour as threading.Event.wait - waits for trig.set()
+        ...         print("trig is set. doing stuff...")
+        ...         print("finished doing stuff.")
+        ...         print("Waiting for trig to become clear before restarting loop...")
+        ...         self.trig.wait_clear()  # Unlike threading.Event, BetterEvent allows waiting for the "clear" signal
+        ...
+        >>> evt = BetterEvent(name='My Event')
+        >>> t = MyThread(trig=evt)
+        >>> t.start()
+        Waiting for trig to become set before doing stuff...
+        >>> evt.set()   # We flip evt (trig) to "set", which notifies MyThread it can proceed.
+        trig is set. doing stuff...
+        finished doing stuff.
+        Waiting for trig to become clear before restarting loop...
+        >>> evt.clear()  # Unlike threading.Event, we can "clear" the event, and MyThread will detect the "clear" signal instantly.
+        Waiting for trig to become set before doing stuff...
+        >>> evt.set()    # The loop restarted. Now we can flip trig back to "set"
+        trig is set. doing stuff...
+        finished doing stuff.
+        Waiting for trig to become clear before restarting loop...
+    
     
     """
     wait_on: str

@@ -1,19 +1,34 @@
-privex.helpers.common
-=====================
+Common/General Helpers
+======================
+
 
 .. automodule:: privex.helpers.common
+   :members:
+   :undoc-members:
+
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree: common
+
+      ALPHANUM
+      SAFE_CHARS
+      IS_XARGS
+      IS_XKWARGS
+      T_PARAM
+      T_PARAM_DICT
+      T_PARAM_LIST
+      INS_EMPTY
 
 
-   
-   
-   
    
    
    .. rubric:: Functions
 
    .. autosummary::
       :toctree: common
-   
+
+      _filter_params
       almost
       byteify
       call_sys
@@ -55,9 +70,9 @@ privex.helpers.common
       :toctree: common
    
       ErrHelpParser
-   
-   
 
-   
+
+
+
    
    

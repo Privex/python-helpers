@@ -1,8 +1,8 @@
-privex.helpers.decorators
-=========================
+Decorators
+==========
 
 .. automodule:: privex.helpers.decorators
-
+   :members:
 
    
    
@@ -34,6 +34,5 @@ privex.helpers.decorators
    
    
 
-   
    
    

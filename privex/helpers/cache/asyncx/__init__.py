@@ -68,24 +68,24 @@ HAS_ASYNC_MEMCACHED = False
 __all__ = ['HAS_ASYNC_REDIS', 'HAS_ASYNC_MEMORY', 'HAS_ASYNC_MEMCACHED']
 
 try:
-    from .base import AsyncCacheAdapter
+    from privex.helpers.cache.asyncx.base import AsyncCacheAdapter
     
     __all__ += ['AsyncCacheAdapter']
 except ImportError:
     log.exception("[%s] Failed to import %s from %s (unknown error!)", __name__, 'AsyncCacheAdapter', f'{__name__}.base')
 
 try:
-    from .AsyncMemoryCache import AsyncMemoryCache
+    from privex.helpers.cache.asyncx.AsyncMemoryCache import AsyncMemoryCache
 
     HAS_ASYNC_MEMORY = True
     __all__ += ['AsyncMemoryCache']
 except ImportError:
     log.exception("[%s] Failed to import %s from %s (unknown error!)", __name__, 'AsyncMemoryCache', f'{__name__}.AsyncMemoryCache')
 
-from .AsyncMemoryCache import AsyncMemoryCache
+# from privex.helpers.cache.asyncx.AsyncMemoryCache import AsyncMemoryCache
 
 try:
-    from .AsyncRedisCache import AsyncRedisCache
+    from privex.helpers.cache.asyncx.AsyncRedisCache import AsyncRedisCache
     
     HAS_ASYNC_REDIS = True
     __all__ += ['AsyncRedisCache']
@@ -94,7 +94,7 @@ except ImportError:
               __name__, 'AsyncRedisCache', f'{__name__}.AsyncRedisCache')
 
 try:
-    from .AsyncMemcachedCache import AsyncMemcachedCache
+    from privex.helpers.cache.asyncx.AsyncMemcachedCache import AsyncMemcachedCache
     
     HAS_ASYNC_MEMCACHED = True
     __all__ += ['AsyncMemcachedCache']

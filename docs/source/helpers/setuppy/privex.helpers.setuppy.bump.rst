@@ -1,5 +1,5 @@
-privex.helpers.setuppy.bump
-===========================
+Package Versioning Helpers (bump)
+=================================
 
 .. automodule:: privex.helpers.setuppy.bump
 
@@ -26,6 +26,5 @@ privex.helpers.setuppy.bump
    
    
 
-   
    
    
