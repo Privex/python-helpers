@@ -193,6 +193,7 @@ import copy
 import inspect
 import sys
 from collections import namedtuple, OrderedDict
+from json import JSONDecodeError
 from types import MemberDescriptorType
 from typing import Dict, Optional, NamedTuple, Union, Type, List, Generator, Iterable, TypeVar
 from privex.helpers.types import T, K
@@ -1252,12 +1253,20 @@ class DictDataClass(Dictable):
     DictConfig = copy_class(_DictConfig, name='DictConfig', quiet=True)
 
     def __iter__(self):
+        cls_name = self.__class__.__name__
         # The raw_data attribute isn't required, and isn't guaranteed to have been set on a dataclass, so
         # we fallback to a blank DictObject if it's not found.
         dict_rd = DictObject()
         if hasattr(self, 'raw_data'):
             dict_rd = dict(self.raw_data)
-        dict_dc = dataclasses.asdict(self, dict_factory=dict)
+        
+        # dataclasses.asdict can sometimes freak out when a dataclass contains un-serializable objects such as arbitrary
+        # class instances (which may even be excluded already in DictConfig. In such a case, we can fallback to __dict__ :)
+        try:
+            dict_dc = dataclasses.asdict(self, dict_factory=dict)
+        except (TypeError, ValueError, JSONDecodeError) as e:
+            log.warning("Dictifying %s using dataclasses.asdict failed (%s %s)... falling back to __dict__", cls_name, type(e), str(e))
+            dict_dc = dict(self.__dict__)
 
         from privex.helpers import empty
         dconf = self._dc_dict_config
