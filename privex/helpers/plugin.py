@@ -33,13 +33,13 @@ how to override the settings if the defaults don't work for you.
 import logging
 import threading
 from os import path
-from typing import Any, Union, Optional
+from typing import Any, Union, Optional, Generator, Tuple, Dict
 
 from privex.helpers.collections import DictObject
 
 from privex.helpers import settings
 from privex.helpers.types import T
-from privex.helpers.common import empty_if
+from privex.helpers.common import empty_if, empty
 from privex.helpers.exceptions import GeoIPDatabaseNotFound
 
 log = logging.getLogger(__name__)
@@ -88,15 +88,45 @@ def _get_threadstore(name=None, fallback=None, thread_id=None) -> Any:
     return thread_store.get(name, fallback)
 
 
+def _get_all_threadstore(name=None) -> Generator[Tuple[Union[int, str], Union[Dict[str, Any], Any]], None, None]:
+    """
+    
+    Get the ``'redis'`` key from every thread in the thread store::
+    
+        >>> for t_id, inst in _get_all_threadstore('redis'):
+        ...     inst.close()
+        ...
+        >>> clean_threadstore(name='redis')
+    
+    Get the thread store for every single thread::
+        
+        >>> for t_id, ts in _get_all_threadstore():
+        ...     if 'redis' in ts: print(t_id, 'has redis instance!')
+        ...     if 'aiomemcached' in ts: print(t_id, 'has asyncio memcached instance!')
+    
+    
+    :param str name: Yield only this key from each thread store (if it exists)
+    :return Generator store_gen: A generator of tuples containing either ``(thread_id, thread_store: dict)``, or ``(t_id, value)``
+                                 depending on whether ``name`` is empty or not.
+    """
+    for t_id, ts in __STORE['threads'].items():
+        if empty(name):
+            yield t_id, ts
+        elif name in ts:
+            yield t_id, ts[name]
+
+
 def _set_threadstore(name, obj: T, thread_id=None) -> T:
     thread_store = _get_threadstore(thread_id=thread_id)
     thread_store[name] = obj
     return obj
 
 
-def clean_threadstore(thread_id=None, name=None):
+def clean_threadstore(thread_id=None, name=None, clean_all: bool = False) -> bool:
     """
     Remove the per-thread instance storage in :attr:`.__STORE`, usually called when a thread is exiting.
+
+    Can also be used to clear a certain key in all thread stores, or completely clear every key from every thread store.
 
     Example::
 
@@ -127,13 +157,40 @@ def clean_threadstore(thread_id=None, name=None):
         ...     print('cleaning up...')
         ...     clean_threadstore(name='redis')   # Delete only the key 'redis' from the thread store
     
-
+    Removing an individual item from the thread store for **ALL thread ID's**::
+    
+        >>> # Remove the redis instance from every thread store
+        >>> clean_threadstore(name='redis', clean_all=True)
+    
+    Clearing the entire thread store for every thread ID::
+    
+        >>> clean_threadstore(clean_all=True)
+    
+    
     :param thread_id: The ID of the thread (usually from :func:`threading.get_ident`) to clean the storage for.
                       If left as None, will use the ID returned by :func:`threading.get_ident`.
     
     :param name:      If specified, then only the key ``name`` will be deleted from the thread store, instead of the entire thread store.
+    :param bool clean_all: (default: ``False``) If ``True`` - when ``name`` is non-empty - that key will be removed from every
+                           thread ID's thread store - while if ``name`` is empty, every single thread ID's thread store is cleared.
     """
     thread_id = empty_if(thread_id, threading.get_ident())
+
+    if clean_all:
+        for t_id, ts in __STORE['threads'].items():
+            ts: dict
+            if empty(name):
+                log.debug("[clean_threadstore] (clean_all True) Cleaning entire thread store for thread ID '%s'", t_id)
+                for n in ts.keys():
+                    log.debug("[clean_threadstore] Cleaning '%s' key for thread ID '%s'", name, t_id)
+                    del ts[n]
+                continue
+            log.debug("[clean_threadstore] (clean_all True) Cleaning '%s' key for thread ID '%s'", name, t_id)
+            if name in ts:
+                log.debug("[clean_threadstore] Found %s in thread ID %s - deleting...", name, ts)
+                del ts[name]
+        return True
+    
     if thread_id in __STORE['threads']:
         ts = __STORE['threads'][thread_id]
         if name is None:
@@ -178,14 +235,25 @@ try:
         #     thread_store['redis'] = rd
         # return thread_store['redis']
     
-    def close_redis(thread_id=None) -> bool:
+    def close_redis(thread_id=None, close_all=False) -> bool:
         """
         Close the global Redis connection and delete the instance.
         
         :param thread_id: Close and delete the Redis instance for this thread ID, instead of the detected current thread
+        :param bool close_all: Close all AsyncIO Redis instances for every thread ID, then purge their thread store keys.
         :return bool deleted: ``True`` if an instance was found and deleted. ``False`` if there was no existing Redis instance.
         """
-        
+        if close_all:
+            for t_id, rd in _get_all_threadstore('redis'):
+                if rd is None:
+                    continue
+                log.debug("Closing redis for thread ID %s", t_id)
+                try:
+                    rd.close()
+                except Exception:
+                    log.exception("Exception while closing redis for thread ID %s", t_id)
+            return clean_threadstore(name='redis', clean_all=True)
+    
         rd: Union[str, redis.Redis] = _get_threadstore('redis', 'NOT_FOUND', thread_id=thread_id)
         if rd != 'NOT_FOUND':
             rd.close()
@@ -253,18 +321,36 @@ try:
             rd: aioredis.Redis = _set_threadstore('aioredis', await connect_redis_async(**rd_config), thread_id=thread_id)
         return rd
 
-    async def close_redis_async(thread_id=None) -> bool:
+    async def close_redis_async(thread_id=None, close_all=False) -> bool:
         """
         Close the global Async Redis connection and delete the instance.
 
         :param thread_id: Close and delete the Redis instance for this thread ID, instead of the detected current thread
+        :param bool close_all: Close all AsyncIO Redis instances for every thread ID, then purge their thread store keys.
         :return bool deleted: ``True`` if an instance was found and deleted. ``False`` if there was no existing Redis instance.
         """
-    
-        rd: Union[str, aioredis.connection] = _get_threadstore('aioredis', 'NOT_FOUND', thread_id=thread_id)
+        rd: Optional[Union[aioredis.connection, aioredis.Redis]]
+        if close_all:
+            for t_id, rd in _get_all_threadstore('aioredis'):
+                if rd is None:
+                    continue
+                log.debug("Closing aioredis for thread ID %s", t_id)
+                try:
+                    rd.close()
+                    await rd.wait_closed()
+                except RuntimeError as err:
+                    log.warning("[ignored] RuntimeError while closing aioredis (thread %s): %s - %s", thread_id, type(err), str(err))
+                except Exception:
+                    log.exception("Exception while closing aioredis for thread ID %s", t_id)
+            return clean_threadstore(name='aioredis', clean_all=True)
+        
+        rd = _get_threadstore('aioredis', 'NOT_FOUND', thread_id=thread_id)
         if rd != 'NOT_FOUND':
-            rd.close()
-            await rd.wait_close()
+            try:
+                rd.close()
+                await rd.wait_closed()
+            except RuntimeError as err:
+                log.warning("[ignored] RuntimeError while closing aioredis (thread %s): %s - %s", thread_id, type(err), str(err))
             clean_threadstore(thread_id=thread_id, name='aioredis')
             return True
         return False
@@ -318,17 +404,28 @@ try:
         return rd
 
 
-    def close_memcached_async(thread_id=None) -> bool:
+    async def close_memcached_async(thread_id=None, close_all=False) -> bool:
         """
         Close the global Async Memcached connection and delete the instance.
 
         :param thread_id: Close and delete the Memcached instance for this thread ID, instead of the detected current thread
+        :param bool close_all: Close all AsyncIO Memcached instances for every thread ID, then purge their thread store keys.
         :return bool deleted: ``True`` if an instance was found and deleted. ``False`` if there was no existing Memcached instance.
         """
-    
+        if close_all:
+            for t_id, rd in _get_all_threadstore('aiomemcached'):
+                if rd is None:
+                    continue
+                log.debug("Closing aiomemcached for thread ID %s", t_id)
+                try:
+                    await rd.close()
+                except Exception:
+                    log.exception("Exception while closing aiomemcached for thread ID %s", t_id)
+            return clean_threadstore(name='aiomemcached', clean_all=True)
+        
         rd: Union[str, aiomcache.Client] = _get_threadstore('aiomemcached', 'NOT_FOUND', thread_id=thread_id)
         if rd != 'NOT_FOUND':
-            rd.close()
+            await rd.close()
             clean_threadstore(thread_id=thread_id, name='aiomemcached')
             return True
         return False
@@ -336,7 +433,7 @@ try:
 
     async def reset_memcached_async(thread_id=None) -> aiomcache.Client:
         """Close the global Async Memcached connection, delete the instance, then re-instantiate it"""
-        close_memcached_async(thread_id=thread_id)
+        await close_memcached_async(thread_id=thread_id)
         return await _set_threadstore('aiomemcached', get_memcached_async(True, thread_id), thread_id=thread_id)
 
 
@@ -473,15 +570,28 @@ try:
         return geo
 
 
-    def close_geoip(geo_type: str, thread_id=None) -> bool:
+    def close_geoip(geo_type: str, thread_id=None, close_all=False) -> bool:
         """
         Close the global GeoIP connection and delete the instance.
         
         :param str geo_type: The GeoIP database type: either 'city', 'asn' or 'country'
         :param thread_id: Close and delete the Redis instance for this thread ID, instead of the detected current thread
+        :param bool close_all: Close all GeoIP ``geo_type`` instances for every thread ID, then purge their thread store keys.
         :return bool deleted: ``True`` if an instance was found and deleted. ``False`` if there was no existing Redis instance.
         """
         tsname = f'geoip_{geo_type}'
+
+        if close_all:
+            for t_id, geo in _get_all_threadstore(tsname):
+                if geo is None:
+                    continue
+                log.debug("Closing %s for thread ID %s", tsname, t_id)
+                try:
+                    geo.close()
+                except Exception:
+                    log.exception("Exception while closing %s for thread ID %s", tsname, t_id)
+            return clean_threadstore(name=tsname, clean_all=True)
+        
         geo: Union[str, geoip2.database.Reader] = _get_threadstore(tsname, 'NOT_FOUND', thread_id=thread_id)
         if geo != 'NOT_FOUND':
             geo.close()

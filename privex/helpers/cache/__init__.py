@@ -97,6 +97,58 @@ from a non-async function.
     >>> await get_hello_async()
     'world'
 
+Important info about using the cache abstraction layer with AsyncIO
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+While ``cached`` **usually works** in AsyncIO contexts, due to the synchronous backwards compatibility wrappers, the standard
+:class:`.CacheWrapper` can behave strangely in complex AsyncIO applications.
+
+If your application / library is **primarily AsyncIO**, you should use :attr:`.async_cached` ( :class:`.AsyncCacheWrapper` )
+instead of the standard :attr:`.cached` - and similarly, the adapter management functions :func:`.async_adapter_get` and
+:func:`.async_adapter_set`.
+
+The :class:`.AsyncCacheWrapper` adapter wrapper class - as the name implies - is generally **only** usable from async functions/methods,
+and maintains a separate cache adapter instance than :class:`.CacheWrapper` ( :attr:`.cached` ), which **must be an AsyncIO adapter**
+such as :class:`.AsyncRedisCache`
+
+The AsyncIO cache abstraction layer / wrapper works pretty much exactly the same as the "hybrid" :class:`.CacheWrapper`,
+but to make it clear how it can be used, here's some example code which shows setting/getting the global Async adapter, and
+using the cache abstraction layer.
+
+**Examples**
+
+First we'll import the three main AsyncIO cache abstraction functions, plus :class:`.AsyncRedisCache` ::
+
+    >>> from privex.helpers.cache import async_cached, async_adapter_get, async_adapter_set, AsyncRedisCache
+
+We can use the global AsyncIO cache adapter instance (defaults to :class:`.AsyncMemoryCache`) via ``async_cached``::
+
+    >>> await async_cached.set('hello', 'world')
+    >>> await async_cached.get('hello')
+    'world'
+
+Much like the standard :class:`.CacheWrapper`, you can get and set keys using dict-like syntax, however
+since ``__getitem__`` and ``__setitem__`` can't be natively async without Python complaining, they use the wrapper decorator
+:func:`.awaitable` for getting, and the synchronous async wrapper function :func:`.loop_run` for setting. The use of these wrappers
+may cause problems in certain scenarios, so it's recommended to avoid using the dict-like cache syntax within AsyncIO code::
+ 
+    >>> await async_cached['hello']
+    'world'
+    >>> async_cached['lorem'] = 'ipsum'
+
+To set / replace the global AsyncIO cache adapter, use :func:`.async_adapter_set` - similarly, you can use :func:`.async_adapter_get`
+to get the current adapter instance (e.g. a direct instance of :class:`.AsyncRedisCache` if that's the current adapter)::
+
+    >>> async_adapter_set(AsyncRedisCache())
+    >>> adp = async_adapter_get()
+    >>> await adp.set('lorem', 'test')  # Set 'lorem' using the AsyncRedisCache instance directly
+    >>> await adp.get('lorem')          # Get 'lorem' using the AsyncRedisCache instance directly
+    'test'
+    >>> await async_cached.get('lorem') # Get 'lorem' using the global AsyncIO cache wrapper
+    'test'
+
+
+
 
 Plug-n-play usage
 ^^^^^^^^^^^^^^^^^
@@ -165,7 +217,7 @@ control, for example:
         |                                                   |
         +===================================================+
 
-    Copyright 2019     Privex Inc.   ( https://www.privex.io )
+    Copyright 2020     Privex Inc.   ( https://www.privex.io )
 
 
 Cache API Docs
@@ -175,14 +227,16 @@ Cache API Docs
 
 
 """
+import asyncio
 import logging
+from inspect import isclass
 
-from privex.helpers.asyncx import awaitable
+from privex.helpers.common import empty_if, LayeredContext
+from privex.helpers.asyncx import awaitable, await_if_needed, loop_run
 
 log = logging.getLogger(__name__)
 
-from typing import Any, Optional, Union, Type
-
+from typing import Any, Optional, Union, Type, List
 from privex.helpers.cache.CacheAdapter import CacheAdapter
 from privex.helpers.cache.MemoryCache import MemoryCache
 
@@ -195,14 +249,6 @@ try:
     from privex.helpers.cache.asyncx import *
 except ImportError:
     log.exception("[%s] Failed to import %s from %s (unknown error!)", __name__, '*', f'{__name__}.asyncx')
-    
-# try:
-#     from privex.helpers.cache.asyncx import AsyncMemoryCache
-#     from privex.helpers.cache.asyncx import AsyncCacheAdapter
-# except ImportError:
-#     log.exception(
-#         "[%s] Failed to import AsyncMemoryCache and/or AsyncCacheAdapter from privex.helpers.cache.asyncx...", __name__
-#     )
 
 from privex.helpers.exceptions import NotConfigured, CacheNotFound
 from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
@@ -211,6 +257,12 @@ from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
 __STORE = {}
 
 __STORE['adapter']: CacheAdapter
+__STORE['async_adapter']: AsyncCacheAdapter
+
+
+CLSCacheAdapter = Union[Type[CacheAdapter], Type[AsyncCacheAdapter]]
+INSCacheAdapter = Union[CacheAdapter, AsyncCacheAdapter]
+ANYCacheAdapter = Union[CLSCacheAdapter, INSCacheAdapter]
 
 
 class CacheWrapper(object):
@@ -241,29 +293,58 @@ class CacheWrapper(object):
         >>> CacheWrapper.set_adapter(cache.MemoryCache())  # Set the adapter only for the wrapper (aka ``cached``)
     
     """
-    cache_instance: CacheAdapter = None
+    cache_instance: Optional[INSCacheAdapter] = None
     """Holds the singleton instance of a :class:`.CacheAdapter` implementation"""
     
-    default_adapter: Type[CacheAdapter] = MemoryCache
+    default_adapter: Type[CLSCacheAdapter] = MemoryCache
     """The default adapter class to instantiate if :py:attr:`.cache_instance` is ``None``"""
+
+    instance_args = []
+    instance_kwargs = {}
     
-    @staticmethod
-    def get_adapter(default: Type[CacheAdapter] = default_adapter, *args, **kwargs) -> CacheAdapter:
+    max_context_layers: int = 1
+    _ctx_tracker: Optional[LayeredContext] = None
+    
+    @classmethod
+    def get_context_tracker(cls, reset: bool = False) -> LayeredContext:
+        return cls.reset_context_tracker() if reset or not cls._ctx_tracker else cls._ctx_tracker
+    
+    @classmethod
+    def reset_context_tracker(cls) -> LayeredContext:
+        cls._ctx_tracker = LayeredContext(cls.cache_instance, max_layers=cls.max_context_layers)
+        return cls._ctx_tracker
+
+    @classmethod
+    def get_adapter(cls, default: CLSCacheAdapter = default_adapter, *args, **kwargs) -> INSCacheAdapter:
         """
         Attempt to get the singleton cache adapter from :py:attr:`.cache_instance` - if the instance is ``None``, then
         attempt to instantiate ``default()``
-        
+
         If any ``*args`` or ``**kwargs`` are passed, they will be passed through to ``default(*args, **kwargs)`` so
         that any necessary configuration parameters can be passed to the class.
         """
-        if not CacheWrapper.cache_instance:
-            CacheWrapper.cache_instance = default(*args, **kwargs)
-        return CacheWrapper.cache_instance
+        if not cls.cache_instance:
+            cls.instance_args, cls.instance_kwargs = list(args), dict(kwargs)
+            cls.set_adapter(default(*args, **kwargs))
+        return cls.cache_instance
 
-    @staticmethod
-    def set_adapter(adapter: CacheAdapter) -> CacheAdapter:
-        CacheWrapper.cache_instance = adapter
-        return CacheWrapper.cache_instance
+    @classmethod
+    def set_adapter(cls, adapter: ANYCacheAdapter, *args, **kwargs) -> INSCacheAdapter:
+        cls.instance_args, cls.instance_kwargs = list(args), dict(kwargs)
+        cls.cache_instance = cls.get_adapter(adapter, *args, **kwargs) if isclass(adapter) else adapter
+        cls.reset_context_tracker()
+        return cls.cache_instance
+
+    @classmethod
+    def reset_adapter(cls, default: CLSCacheAdapter = default_adapter, *args, **kwargs) -> INSCacheAdapter:
+        """
+        Re-create the adapter instance at :attr:`.cache_instance` with the same adapter class (assuming it's set)
+        """
+        adp = cls.get_adapter(default, *args, **kwargs)
+        n_args, n_kwargs = empty_if(args, cls.instance_args, itr=True), {**cls.instance_kwargs, **kwargs}
+        c = adp.__class__
+        cls.cache_instance = c.__init__(c(), *n_args, **n_kwargs)
+        return cls.cache_instance
 
     def __getattr__(self, item):
         if hasattr(super(), item):
@@ -289,14 +370,167 @@ class CacheWrapper(object):
         with CacheWrapper.get_adapter() as a:
             return a.set(key=key, value=value)
 
+    async def __aenter__(self):
+        """Pass-through to :meth:`.cache_instance.__aenter__` instance AsyncIO context enter method"""
+        self.get_adapter()  # Make sure cache_instance exists by calling get_adapter (which will set the default if it doesn't)
+        return await self.get_context_tracker().aenter()
 
-cached: CacheAdapter = CacheWrapper()
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Pass-through to :meth:`.cache_instance.__aexit__` instance AsyncIO context exit method"""
+        return await self.get_context_tracker().aexit(exc_type, exc_val, exc_tb)
+
+    def __enter__(self):
+        """Pass-through to :meth:`.cache_instance.__enter__` instance context enter method"""
+        self.get_adapter()  # Make sure cache_instance exists by calling get_adapter (which will set the default if it doesn't)
+        return self.get_context_tracker().enter()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Pass-through to :meth:`.cache_instance.__exit__` instance context exit method"""
+        return self.get_context_tracker().exit(exc_type, exc_val, exc_tb)
+
+
+cached: Union[CacheAdapter, CacheWrapper] = CacheWrapper()
 """
 This module attribute acts as a singleton, containing an instance of :class:`.CacheWrapper` which is designed
 to allow painless usage of this caching module.
-
-
 """
+
+
+class AsyncCacheWrapper(CacheWrapper):
+    """
+    For applications/packages which are primarily AsyncIO, :class:`.CacheWrapper` can cause problems such as the
+    common ``event loop is already running`` - and unfortunately, :mod:`nest_asyncio` isn't always able to fix it.
+    
+    This wrapper - :class:`.AsyncCacheWrapper` is ONLY compatible with AsyncIO code, and holds a different
+    adapter instance in :attr:`.cache_instance` than :class:`.CacheWrapper`, as it expects the adapter instance to
+    always be based on :class:`.AsyncCacheAdapter` - along with the fact it generally returns coroutines.
+    
+        >>> from privex.helpers.cache import async_cached, async_adapter_set, AsyncRedisCache
+        >>> async_adapter_set(AsyncRedisCache())
+        >>> c = async_cached      # We alias async_cached to 'c' for convenience.
+        >>> c['hello'] = 'world'  # We can set cache keys as if the wrapper was a dictionary
+        >>> c['hello']            # Similarly we can also get keys like normal
+        'world'
+        >>> await c['hello']      # It's safest to use ``await`` when getting keys within an async context
+        'world'
+        >>> await c.get('hello')  # We can also use the coroutines .get, .set, .get_or_set etc.
+        'world'
+    
+    
+    """
+    cache_instance: AsyncCacheAdapter = None
+    """Holds the singleton instance of a :class:`.AsyncCacheAdapter` implementation"""
+    
+    instance_args = []
+    instance_kwargs = {}
+    
+    default_adapter: Type[AsyncCacheAdapter] = AsyncMemoryCache
+    """The default adapter class to instantiate if :py:attr:`.cache_instance` is ``None``"""
+
+    max_context_layers: int = 1
+    _ctx_tracker: Optional[LayeredContext] = None
+    
+    @classmethod
+    def get_adapter(cls, default: Type[AsyncCacheAdapter] = default_adapter, *args, **kwargs) -> AsyncCacheAdapter:
+        
+        # if not cls.cache_instance:
+        #     cls.instance_args, cls.instance_kwargs = list(args), dict(kwargs)
+        #     cls.cache_instance = default(*args, **kwargs)
+        return super(AsyncCacheWrapper, cls).get_adapter(default, *args, **kwargs)
+
+    @classmethod
+    def set_adapter(cls, adapter: AsyncCacheAdapter, *args, **kwargs) -> AsyncCacheAdapter:
+        return super(AsyncCacheWrapper, cls).set_adapter(adapter, *args, **kwargs)
+        # cls.cache_instance = adapter
+        # return cls.cache_instance
+    
+    @classmethod
+    def reset_adapter(cls, default: Type[AsyncCacheAdapter] = default_adapter, *args, **kwargs) -> AsyncCacheAdapter:
+        """
+        Re-create the adapter instance at :attr:`.cache_instance` with the same adapter class (assuming it's set)
+        """
+        # adp = cls.get_adapter(default, *args, **kwargs)
+        # n_args, n_kwargs = empty_if(args, cls.instance_args, itr=True), {**cls.instance_kwargs, **kwargs}
+        # c = adp.__class__
+        # cls.cache_instance = c.__init__(c(), *n_args, **n_kwargs)
+        return super(AsyncCacheWrapper, cls).reset_adapter(default, *args, **kwargs)
+    
+    def __getattr__(self, item):
+        if hasattr(super(), item):
+            return getattr(self, item)
+        
+        async def _wrapper(*args, **kwargs):
+            async with AsyncCacheWrapper.get_adapter() as a:
+                return await await_if_needed(getattr(a, item)(*args, **kwargs))
+        
+        return _wrapper
+
+    @awaitable
+    def __getitem__(self, item):
+        async def _wrapper():
+            try:
+                async with AsyncCacheWrapper.get_adapter() as a:
+                    return await await_if_needed(a.get(key=item, fail=True))
+            except CacheNotFound:
+                raise KeyError(f'Key "{item}" not found in cache.')
+        return _wrapper()
+
+    def __setitem__(self, key, value):
+        async def _wrapper():
+            async with AsyncCacheWrapper.get_adapter() as a:
+                return await await_if_needed(a.set(key=key, value=value))
+        return loop_run(_wrapper())
+    
+    # async def __aenter__(self):
+    #     """Pass-through to :meth:`.cache_instance.__aenter__` instance AsyncIO context enter method"""
+    #     return await self.get_adapter().__aenter__()
+    #
+    # async def __aexit__(self, exc_type, exc_val, exc_tb):
+    #     """Pass-through to :meth:`.cache_instance.__aexit__` instance AsyncIO context exit method"""
+    #     return await self.get_adapter().__aexit__(exc_type, exc_val, exc_tb)
+    def __enter__(self):
+        self.get_adapter()  # Make sure cache_instance exists by calling get_adapter (which will set the default if it doesn't)
+        # Because this is an AsyncIO-only cache adapter, generally __enter__ isn't used, instead the AsyncIO `__aenter__` and
+        # `__aexit__` are used. So, we can try to convert any attempts to use the classic `with x as y` into `async with x as y`
+        # by grabbing the event loop and trying to run `__aenter__` in the AsyncIO event loop.
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(self.get_context_tracker().aenter())
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Because this is an AsyncIO-only cache adapter, generally __exit__ isn't used, instead the AsyncIO `__aenter__` and
+        # `__aexit__` are used. So, we can try to convert any attempts to use the classic `with x as y` into `async with x as y`
+        # by grabbing the event loop and trying to run `__aexit__` in the AsyncIO event loop.
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(self.get_context_tracker().aexit(exc_type, exc_val, exc_tb))
+
+
+async_cached: Union[AsyncCacheAdapter, AsyncCacheWrapper] = AsyncCacheWrapper()
+
+
+def async_adapter_set(adapter: AsyncCacheAdapter) -> AsyncCacheAdapter:
+    """
+    Same as :func:`.adapter_set` but sets ``__STORE['async_adapter']`` instead of ``'adapter'``,
+    and sets the adapter for async-only :attr:`.async_cached` ( :class:`.AsyncCacheWrapper` ) instead of
+    the dual-sync :attr:`.cached` ( :class:`.CacheWrapper` )
+    
+    Example::
+    
+        >>> from privex.helpers.cache import AsyncRedisCache, async_adapter_set
+        >>> async_adapter_set(AsyncRedisCache())
+    
+    """
+    __STORE['async_adapter'] = adapter
+    async_cached.set_adapter(adapter)
+    return __STORE['async_adapter']
+
+
+def async_adapter_get(default: Type[AsyncCacheAdapter] = AsyncMemoryCache) -> AsyncCacheAdapter:
+    """Same as :func:`.adapter_get` but gets ``__STORE['async_adapter']`` instead of ``'adapter'``"""
+    if 'async_adapter' not in __STORE or __STORE['async_adapter'] is None:
+        if not default:
+            raise NotConfigured('No async cache adapter has been configured for privex.helpers.cache!')
+        async_adapter_set(default())
+    return __STORE['async_adapter']
 
 
 def adapter_set(adapter: CacheAdapter):

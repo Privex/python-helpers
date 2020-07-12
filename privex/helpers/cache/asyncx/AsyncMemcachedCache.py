@@ -5,9 +5,12 @@ from async_property import async_property
 from privex.helpers.common import empty, byteify
 from privex.helpers.exceptions import CacheNotFound
 from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
-from privex.helpers.plugin import get_memcached_async
+from privex.helpers.plugin import get_memcached_async, close_memcached_async
 from privex.helpers.cache.asyncx.base import AsyncCacheAdapter
 import aiomcache
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class AsyncMemcachedCache(AsyncCacheAdapter):
@@ -73,6 +76,9 @@ class AsyncMemcachedCache(AsyncCacheAdapter):
     as ``dict`` and ``Decimal`` before insertion, and un-serialise after retrieval).
     """
 
+    adapter_enter_reconnect: bool = True
+    adapter_exit_close: bool = True
+
     _mcache: Optional[aiomcache.Client]
     
     def __init__(self, use_pickle: bool = None, mcache_instance: aiomcache.Client = None, *args, **kwargs):
@@ -90,7 +96,11 @@ class AsyncMemcachedCache(AsyncCacheAdapter):
 
         :param aiomcache.Client mcache_instance: If this isn't ``None`` / ``False``, then this Memcached instance will be
                                                  used instead of the global one from :py:func:`.get_memcached_async`
-
+        
+        :keyword bool enter_reconnect: Pass ``enter_reconnect=False`` to disable calling :meth:`.reconnect` when entering this cache
+                                       adapter as a context manager (:meth:`.__aenter__`)
+        :keyword bool exit_close: Pass ``exit_close=False`` to disable calling :meth:`.close` when exiting this cache
+                                  adapter as a context manager (:meth:`.__aexit__`)
         """
         super().__init__(*args, **kwargs)
         self._mcache = None if not mcache_instance else mcache_instance
@@ -99,9 +109,9 @@ class AsyncMemcachedCache(AsyncCacheAdapter):
     @async_property
     async def mcache(self) -> aiomcache.Client:
         # We can't recycle connections with aiomcache, so we need to make sure to get a new connection for every instance.
-        if self._mcache is None:
-            self._mcache = await get_memcached_async(new_connection=True)
-        return self._mcache
+        # if self._mcache is None:
+        #     self._mcache = await get_memcached_async(new_connection=True)
+        return await self.connect()
     
     async def get(self, key: Union[bytes, str], default: Any = None, fail: bool = False) -> Any:
         key = byteify(key)
@@ -137,10 +147,16 @@ class AsyncMemcachedCache(AsyncCacheAdapter):
         await self.set(key=key, value=v, timeout=timeout)
         return v
 
-    async def __aenter__(self):
-        return self
+    async def connect(self, *args, new_connection=True, **kwargs) -> aiomcache.Client:
+        # We can't recycle connections with aiomcache, so we need to make sure to get a new connection for every instance.
+        if not self._mcache:
+            self._mcache = await get_memcached_async(*args, new_connection=new_connection, **kwargs)
+        return self._mcache
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def close(self):
         if self._mcache is not None:
+            log.debug("Closing AsyncIO Memcached instance %s._mcache", self.__class__.__name__)
             await self._mcache.close()
-            self._mcache = None
+        self._mcache = None
+        return await close_memcached_async()
+

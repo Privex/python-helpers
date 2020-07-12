@@ -31,8 +31,9 @@ async def rcache():
     # _rd = await r.redis
     # _rd.close()
     # await _rd.wait_close()
-    log.info("Removing keys listed in cleanup_keys: %s", cleanup_keys)
-    await AsyncMemcachedCache().remove(*cleanup_keys)
+    async with AsyncMemcachedCache() as ac:
+        log.info("Removing keys listed in cleanup_keys: %s", cleanup_keys)
+        await ac.remove(*cleanup_keys)
     cleanup_keys = []
 
 

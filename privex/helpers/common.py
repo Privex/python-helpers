@@ -37,11 +37,11 @@ from decimal import Decimal, getcontext
 from os import getenv as env
 from subprocess import PIPE, STDOUT
 from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional, BinaryIO, Generator, Mapping
-
 from privex.helpers import settings
-
 from privex.helpers.collections import DictObject, OrderedDictObject
 from privex.helpers.types import T, K, V, C, USE_ORIG_VAR, STRBYTES, Number, NumberStr
+from privex.helpers.exceptions import NestedContextException
+
 
 log = logging.getLogger(__name__)
 
@@ -1404,6 +1404,221 @@ def construct_dict(cls: Union[Type[T], C], kwargs: dict, args: Iterable = None, 
 
     clean_data = {x: y for x, y in kwargs.items() if x in cls_keys}
     return cls(*args, **clean_data)
+
+
+class LayeredContext:
+    """
+    A wrapper class for context manager classes / functions which allows you to control how many ``with`` layers that a context manager
+    can have - and allow for the previous layer's context manager ``__enter__`` / ``yield`` result to be passed down
+    when :attr:`.max_layers` is hit.
+
+    (context managers are classes/functions with the methods ``__enter__`` / ``__exit__`` / ``__aenter__`` / ``__aexit__`` etc.)
+
+    Works with context manager classes, asyncio context manager classes, and :func:`contextlib.contextmanager` functions.
+
+    By default, :class:`.LayeredContext` sets :attr:`.max_layers` to ``1``, meaning after 1 layer of ``with`` or ``async with``
+    statements, all additional layers will simply get given the same context result as the 1st layer, plus both ``__enter__``
+    and ``__exit__`` will only be called once (at the start and end of the first layer).
+
+    **Using with class-based context managers**::
+
+        >>> class Hello:
+        ...     def __enter__(self):
+        ...         print('entering Hello')
+        ...         return self
+        ...     def __exit__(self, exc_type, exc_val, exc_tb):
+        ...         print('exiting Hello')
+        >>> ctx_a = LayeredContext(Hello())
+        >>> with ctx_a as a:
+        ...     print('class manager layer 1')
+        ...     with ctx_a as b:
+        ...         print('class manager layer 2')
+        ...     print('back to class layer 1')
+        entering Hello
+        class manager layer 1
+        class manager layer 2
+        back to class layer 1
+        exiting Hello
+
+    We can see that ``entering Hello`` and ``exiting Hello`` were only outputted at the end of the first context block ``with ctx_a as a``,
+    showing that ``Hello`` was only entered/exited as a context manager for the first ``with`` block.
+
+    **Using with function-based :func:`contextlib.contextmanager` context managers**::
+
+        >>> from contextlib import contextmanager
+        >>> @contextmanager
+        >>> def lorem():
+        ...     print('entering lorem contextmanager')
+        ...     yield 'hello world'
+        ...     print('exiting lorem contextmanager')
+        >>> ctx_b = LayeredContext(lorem())
+        >>> with ctx_b as c:
+        ...     print('function manager layer 1 - context is:', c)
+        ...     with ctx_b as d:
+        ...         print('function manager layer 2 - context is:', d)
+        ...     print('back to function layer 1')
+        entering lorem contextmanager
+        function manager layer 1 - context is: hello world
+        function manager layer 2 - context is: hello world
+        back to function layer 1
+        exiting lorem contextmanager
+
+    We can see the default :attr:`.max_layers` of ``1`` was respected, as the 2nd layer ``with ctx_b as d`` only
+    printed ``function manager layer 2`` (thus ``lorem``'s enter/exit methods were not called), and it shows the
+    context is still ``hello world`` (the context yielded by ``lorem`` in layer 1).
+
+    **Example usage**
+
+    First we need an example class which can be used as a context manager, so we create ``Example`` with a very simple
+    ``__enter__`` and ``__exit__`` method, which simply adds and subtracts from ``self.ctx_layer`` respectively::
+
+        >>> class Example:
+        ...     def __init__(self):
+        ...         self.ctx_layer = 0
+        ...     def __enter__(self):
+        ...         self.ctx_layer += 1
+        ...         return self
+        ...     def __exit__(self, exc_type, exc_val, exc_tb):
+        ...         if self.ctx_layer <= 0: raise ValueError('ctx_layer <= 0 !!!')
+        ...         self.ctx_layer -= 1
+        ...         return None
+
+    If we then create an instance of ``Example``, and use it as a context manager in a 2 layer nested ``with exp``, we can see
+    ``ctx_layer`` gets increased each time we use it as a context manager, and decreases after the context manager block::
+
+        >>> exp = Example()
+        >>> with exp as x:
+        ...     print(x.ctx_layer)       # prints: 1
+        ...     with exp as y:
+        ...         print(y.ctx_layer)   # prints: 2
+        ...     print(x.ctx_layer)       # prints: 1
+        >>> exp.ctx_layer
+        0
+
+    Now, lets wrap it with :class:`.LayeredContext`, and set the maximum amount of layers to ``1``. If we start using ``ctx`` as a
+    context manager, it works as if we used the example instance ``exp`` as a context manager. But, unlike the real instance, ``__enter__``
+    is only really called for the first ``with`` block, and ``__exit__`` is only really called once we finish the first
+    layer ``with ctx as x`` ::
+
+        >>> ctx = LayeredContext(exp, max_layers=1)
+        >>> with ctx as x:
+        ...     print(x.ctx_layer)             # prints: 1
+        ...     with ctx as y:
+        ...         print(y.ctx_layer)         # prints: 1
+        ...         print(ctx.virtual_layer)   # prints: 2
+        ...     print(x.ctx_layer)         # prints: 1
+        ...     print(ctx.virtual_layer)   # prints: 1
+        >>> exp.ctx_layer
+        0
+        >>> print(ctx.layer, ctx.virtual_layer)
+        0 0
+
+    """
+    wrapped_class: K
+    layer_contexts: List[Any]
+    current_context: Optional[Union[K, Any]]
+    layer: int
+    virtual_layer: int
+    max_layers: Optional[int]
+    fail: bool
+    
+    def __init__(self, wrapped_class: K, max_layers: Optional[int] = 1, fail: bool = False):
+        """
+        Construct a :class:`.LayeredContext` instance, wrapping the context manager class instance or func:`contextlib.contextmanager`
+        manager function ``wrapped_class``.
+
+
+        :param K|object wrapped_class: A context manager class or :func:`contextlib.contextmanager` manager function to wrap
+
+        :param int max_layers: Maximum layers of ``(async) with`` blocks before silently consuming further attempts to enter/exit
+                               the context manager for :attr:`.wrapped_class`
+
+        :param bool fail: (default: ``False``) When ``True``, will raise :class:`.NestedContextException` when an :meth:`.enter` call is
+                          going to cause more than ``max_layers`` context manager layers to be active.
+        """
+        self.fail = fail
+        self.max_layers = max_layers
+        self.wrapped_class = wrapped_class
+        self.layer_contexts = []
+        self.current_context = None
+        self.layer = 0
+        self.virtual_layer = 0
+    
+    @property
+    def class_name(self):
+        if hasattr(self.wrapped_class, '__name__'):
+            return self.wrapped_class.__name__
+        return self.wrapped_class.__class__.__name__
+    
+    def enter(self) -> Union[K, Any]:
+        self._virt_enter()
+        if not self.max_layers or self.layer < self.max_layers:
+            return self._enter(self.wrapped_class.__enter__())
+        if self.fail:
+            raise NestedContextException(f"Too many context manager layers for {self.class_name} ({self.__class__.__name__})")
+        return self.current_context
+    
+    def exit(self, exc_type=None, exc_val=None, exc_tb=None) -> Any:
+        if self._virt_exit():
+            return self._exit(self.wrapped_class.__exit__(exc_type, exc_val, exc_tb))
+        return None
+    
+    async def aenter(self) -> Union[K, Any]:
+        self._virt_enter()
+        if not self.max_layers or self.layer < self.max_layers:
+            return self._enter(await self.wrapped_class.__aenter__())
+        if self.fail:
+            raise NestedContextException(f"Too many context manager layers for {self.class_name} ({self.__class__.__name__})")
+        return self.current_context
+    
+    async def aexit(self, exc_type=None, exc_val=None, exc_tb=None) -> Any:
+        if self._virt_exit():
+            return self._exit(await self.wrapped_class.__aexit__(exc_type, exc_val, exc_tb))
+        return None
+    
+    def _enter(self, context: Optional[Union[K, Any]]):
+        self.layer += 1
+        log.debug(
+            "Entering context layer %d (virt: %d) of class %s (max: %d)", self.layer, self.virtual_layer, self.class_name, self.max_layers
+        )
+        self.current_context = context
+        self.layer_contexts.append(self.current_context)
+        return self.current_context
+    
+    def _exit(self, result):
+        log.debug("Exiting context layer %d of class %s (max layers: %d)", self.layer, self.class_name, self.max_layers)
+        self.layer -= 1
+        self.layer_contexts.pop(self.layer)
+        
+        self.current_context = None if self.layer < 1 else self.layer_contexts[self.layer - 1]
+        return result
+    
+    def _virt_enter(self):
+        self.virtual_layer += 1
+        log.debug("ENTER virtual layer %d of class %s (max layers: %d)", self.virtual_layer, self.wrapped_class, self.max_layers)
+    
+    def _virt_exit(self):
+        if self.virtual_layer < 1:
+            log.debug("Not calling real _exit as virtual_layer (%d) is 0 or less", self.virtual_layer)
+            return False
+        log.debug("EXIT virtual layer %d of class %s (max layers: %d)", self.virtual_layer, self.wrapped_class, self.max_layers)
+        self.virtual_layer -= 1
+        if self.virtual_layer >= self.layer:
+            log.debug("Not calling real _exit as virtual_layer (%d) >= layer (%d)", self.virtual_layer, self.layer)
+            return False
+        return True
+    
+    def __enter__(self) -> Union[K, Any]:
+        return self.enter()
+    
+    def __exit__(self, exc_type, exc_val, exc_tb) -> Any:
+        return self.exit(exc_type, exc_val, exc_tb)
+    
+    async def __aenter__(self) -> Union[K, Any]:
+        return await self.aenter()
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> Any:
+        return await self.aexit(exc_type, exc_val, exc_tb)
 
 
 

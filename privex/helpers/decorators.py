@@ -29,7 +29,7 @@ from enum import Enum
 from time import sleep
 from typing import Any, Union, List
 
-from privex.helpers.cache import cached
+from privex.helpers.cache import cached, async_adapter_get
 from privex.helpers.common import empty, is_true
 from privex.helpers.asyncx import await_if_needed
 
@@ -396,6 +396,8 @@ def r_cache_async(cache_key: Union[str, callable], cache_time=300, format_args: 
     """
     Async function/method compatible version of :func:`.r_cache` - see docs for :func:`.r_cache`
     
+    You can bypass caching by passing ``r_cache=False`` to the wrapped function.
+    
     Basic usage::
     
         >>> from privex.helpers import r_cache_async
@@ -432,7 +434,9 @@ def r_cache_async(cache_key: Union[str, callable], cache_time=300, format_args: 
     :return Any res: The return result, either from the wrapped function, or from the cache.
     """
     fmt_args = [] if not format_args else format_args
-    r = cached
+    # Using normal 'cached' often results in "event loop already running" errors due to the synchronous async wrapper
+    # in CacheWrapper. So to be safe, we get the adapter directly to avoid issues.
+    cache_adapter = async_adapter_get()
     whitelist = opts.get('whitelist', True)
     
     def _decorator(f):
@@ -452,16 +456,19 @@ def r_cache_async(cache_key: Union[str, callable], cache_time=300, format_args: 
                 # placeholders using the function's kwargs
                 log.debug('Format_args not empty (or whitelist=False), formatting cache_key "%s"', cache_key)
                 rk = _format_key(args, kwargs, cache_key=cache_key, whitelist=whitelist, fmt_opt=format_opt, fmt_args=format_args)
-            # If using an async cache adapter, r.get might be async...
-            log.debug('Trying to load "%s" from cache', rk)
-            data = await await_if_needed(r.get, rk)
-            
-            if empty(data) or not enable_cache:
-                log.debug('Not found in cache, or "r_cache" set to false. Calling wrapped async function.')
-                data = await await_if_needed(f, *args, **kwargs)
-
+            # To ensure no event loop / thread cache instance conflicts, we use the cache adapter as a context manager, which
+            # is supposed to disconnect + destroy the connection library instance, and re-create it in the current loop/thread.
+            async with cache_adapter as r:
                 # If using an async cache adapter, r.get might be async...
-                await await_if_needed(r.set, rk, data, timeout=cache_time)
+                log.debug('Trying to load "%s" from cache', rk)
+                data = await await_if_needed(r.get, rk)
+                
+                if empty(data) or not enable_cache:
+                    log.debug('Not found in cache, or "r_cache" set to false. Calling wrapped async function.')
+                    data = await await_if_needed(f, *args, **kwargs)
+    
+                    # If using an async cache adapter, r.get might be async...
+                    await await_if_needed(r.set, rk, data, timeout=cache_time)
             
             return data
         

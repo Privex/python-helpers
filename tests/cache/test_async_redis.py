@@ -2,6 +2,7 @@ import asyncio
 import pytest
 import logging
 
+from privex.helpers import close_redis_async
 from privex.helpers.exceptions import CacheNotFound
 
 log = logging.getLogger(__name__)
@@ -30,9 +31,11 @@ async def rcache():
     async with AsyncRedisCache() as r:
         yield r
     
-    log.info("Removing keys listed in cleanup_keys: %s", cleanup_keys)
-    await AsyncRedisCache().remove(*cleanup_keys)
+    async with AsyncRedisCache() as r:
+        log.info("Removing keys listed in cleanup_keys: %s", cleanup_keys)
+        await r.remove(*cleanup_keys)
     cleanup_keys = []
+    await close_redis_async(close_all=True)
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from typing import Union, Coroutine, Type, Callable
 
 from privex import helpers
 from privex.helpers import r_cache_async, get_async_type
+from privex.helpers.exceptions import PrivexException
 from tests import PrivexBaseCase
 import logging
 
@@ -240,4 +241,38 @@ class TestAsyncX(PrivexBaseCase):
     def test_async_type_unknown(self):
         """Test :func`._tst_async` with an integer reference"""
         self.assertEqual(get_async_type(self._tst_sync(1, 2)), 'unknown')
+
+
+class TestAsyncXThread(PrivexBaseCase):
+    """Test cases for thread-related functions/classes in the :mod:`privex.helpers.asyncx` module"""
+    def test_run_coro_thread(self):
+        """
+        Test :func:`.run_coro_thread` basic functionality - run an AsyncIO function with positional args, kwargs, plus a mixture
+        of positional/kw args, and validate the returned data matches the expected output given the arguments that were passed.
+        """
+    
+        async def example_func(lorem: int, ipsum: int):
+            return f"example - number: {lorem + ipsum}"
+        
+        # Test running example_func with positional arguments
+        self.assertEqual(helpers.run_coro_thread(example_func, 10, 15), "example - number: 25")
+        # Test running example_func with keyword arguments
+        self.assertEqual(helpers.run_coro_thread(example_func, lorem=120, ipsum=500), "example - number: 620")
+        # Test running example_func with a mixture of positional and keyword arguments
+        self.assertEqual(helpers.run_coro_thread(example_func, 420, ipsum=600), "example - number: 1020")
+
+    def test_run_coro_thread_exception(self):
+        """Test that :func:`.run_coro_thread` raises exceptions when the async coroutine thread emits one via the queue"""
+        async def another_func(lorem: int, ipsum: int):
+            if lorem > 100: raise PrivexException('lorem over 100')
+            if ipsum > 100: raise AttributeError('ipsum over 100')
+            return lorem + ipsum
+
+        self.assertEqual(helpers.run_coro_thread(another_func, 30, 12), 42)
+        self.assertEqual(helpers.run_coro_thread(another_func, 50, ipsum=15), 65)
+        with self.assertRaisesRegex(PrivexException, 'lorem over 100'):
+            helpers.run_coro_thread(another_func, 500, 12)
+        with self.assertRaisesRegex(AttributeError, 'ipsum over 100'):
+            helpers.run_coro_thread(another_func, 5, 900)
+
 

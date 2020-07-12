@@ -1,16 +1,19 @@
 import pickle
 from typing import Any, Union, Optional
-
 from privex.helpers.common import empty
 
 from privex.helpers import plugin
 from privex.helpers.cache.CacheAdapter import CacheAdapter
 from privex.helpers.exceptions import CacheNotFound
 from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
+import logging
+
+log = logging.getLogger(__name__)
 
 
 if plugin.HAS_REDIS:
-    from privex.helpers.plugin import get_redis
+    from privex.helpers.plugin import get_redis, close_redis
+    from redis import Redis
     import redis
     
     class RedisCache(CacheAdapter):
@@ -76,7 +79,9 @@ if plugin.HAS_REDIS:
         as ``dict`` and ``Decimal`` before insertion, and un-serialise after retrieval).
         """
         
-        def __init__(self, use_pickle: bool = None, redis_instance: redis.Redis = None, *args, **kwargs):
+        _redis: Optional[Redis]
+        
+        def __init__(self, use_pickle: bool = None, redis_instance: Redis = None, *args, **kwargs):
             """
             RedisCache by default uses the global Redis instance from :py:mod:`privex.helpers.plugin`.
             
@@ -94,8 +99,12 @@ if plugin.HAS_REDIS:
             
             """
             super().__init__(*args, **kwargs)
-            self.redis = get_redis() if not redis_instance else redis_instance
+            self._redis = get_redis() if not redis_instance else redis_instance
             self.use_pickle = self.pickle_default if use_pickle is None else use_pickle
+        
+        @property
+        def redis(self) -> Redis:
+            return self.connect()
         
         def get(self, key: str, default: Any = None, fail: bool = False) -> Any:
             key = str(key)
@@ -127,3 +136,25 @@ if plugin.HAS_REDIS:
             v = self.get(key=key, fail=True)
             self.set(key=key, value=v, timeout=timeout)
             return v
+
+        def connect(self, *args, **kwargs) -> Redis:
+            if not self._redis:
+                self._redis = get_redis()
+            return self._redis
+
+        def close(self):
+            if self._redis is not None:
+                log.debug("Closing Synchronous Redis instance %s._redis", self.__class__.__name__)
+                self._redis.close()
+                self._redis = None
+            return close_redis()
+        
+        # def __enter__(self):
+        #     if not self.redis:
+        #         self._redis = get_redis()
+        #     return self
+        #
+        # def __exit__(self, exc_type, exc_val, exc_tb):
+        #     close_redis()
+        #     self._redis = None
+        #     return None

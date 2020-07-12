@@ -34,6 +34,13 @@ class NotFound(Exception):
     pass
 
 
+class NestedContextException(PrivexException):
+    """
+    Raised by a context manager when there's a conflict while nesting multiple ``with xxx as y`` blocks - for example
+    if there's too many nested ``with`` layers.
+    """
+
+
 #####
 # Exceptions related to DNS (domain, or individual record errors)
 #####

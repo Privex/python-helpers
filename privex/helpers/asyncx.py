@@ -26,9 +26,11 @@ To avoid issues with the ``async`` keyword, this file is named ``asyncx`` instea
 """
 import asyncio
 import inspect
+import queue
+import threading
 import warnings
 from asyncio.subprocess import PIPE, STDOUT
-from typing import Tuple, Callable, Any, Union, Coroutine, List, Type, Awaitable
+from typing import Tuple, Callable, Any, Union, Coroutine, List, Type, Awaitable, Optional
 
 from privex.helpers.common import byteify, shell_quote
 from privex.helpers.types import T, STRBYTES, NO_RESULT
@@ -40,7 +42,7 @@ log = logging.getLogger(__name__)
 __all__ = [
     'awaitable', 'AWAITABLE_BLACKLIST_MODS', 'AWAITABLE_BLACKLIST', 'AWAITABLE_BLACKLIST_FUNCS', 'run_sync', 'aobject',
     'call_sys_async', 'async_sync', 'awaitable_class', 'AwaitableMixin', 'loop_run', 'is_async_context', 'await_if_needed',
-    'get_async_type',
+    'get_async_type', 'run_coro_thread', 'run_coro_thread_base', 'coro_thread_func'
 ]
 
 
@@ -66,6 +68,113 @@ def _is_coro(obj: Any) -> bool:
         )
     return False
 
+
+_coro_thread_queue = queue.Queue()
+
+
+def coro_thread_func(func: callable, *t_args, _output_queue: Optional[Union[queue.Queue, str]] = None, **t_kwargs):
+    """
+    This function is not intended to be called directly. It's designed to be used as the target of a :class:`threading.Thread`.
+    
+    Runs the coroutine function ``func`` using a new event loop for the thread this function is running within, and relays
+    the result or an exception (if one was raised) via the :class:`queue.Queue` ``_output_queue``
+    
+    See the higher level :func:`.run_coro_thread` for more info.
+    
+    :param callable func: A reference to the ``async def`` coroutine function that you want to run
+    :param t_args:        Positional arguments to pass-through to the coroutine function
+    
+    :param _output_queue: (default: ``None``) The :class:`queue.Queue` to emit the result or raised exception through. This can also be
+                          set to ``None`` to disable transmitting the result/exception via a queue.
+                          
+                          This can also be set to the string ``"default"``, which means the result/exception will be transmitted
+                          via the :mod:`.asyncx` private queue :attr:`._coro_thread_queue`
+    
+    :param t_kwargs:      Keyword arguments to pass-through to the coroutine function
+    
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        res = loop.run_until_complete(func(*t_args, **t_kwargs))
+        if _output_queue is not None:
+            _output_queue.put(res)
+    except Exception as e:
+        if _output_queue is not None:
+            _output_queue.put(e)
+    loop.close()
+
+
+def run_coro_thread_base(func: callable, *args, _daemon_thread=False, **kwargs) -> threading.Thread:
+    """
+    This is a wrapper function which runs :func:`.coro_thread_func` within a thread, passing ``func``, ``args`` and ``kwargs``
+    to it.
+    
+    See the higher level :func:`.run_coro_thread` for more info.
+    
+    :param callable func: A reference to the ``async def`` coroutine function that you want to run
+    :param args:          Positional arguments to pass-through to the coroutine function
+    
+    :param bool _daemon_thread: (Default: ``False``) Must be specified as a kwarg. Controls whether or not the
+                                generated :class:`thread.Thread` is set as a **daemon thread** or not.
+    
+    :param kwargs:        Keyword arguments to pass-through to the coroutine function
+    
+    :keyword queue.Queue _output_queue: A :class:`queue.Queue` for ;func:`.coro_thread_func` to transmit the coroutine's result, or
+                                        any raised exceptions via.
+    
+    :return threading.Thread t_co: A started (but not joined) thread object for your caller to manage.
+    """
+    t_co = threading.Thread(target=coro_thread_func, args=[func] + list(args), kwargs=dict(kwargs))
+    t_co.daemon = _daemon_thread
+    t_co.start()
+    return t_co
+
+
+def run_coro_thread(func: callable, *args, **kwargs) -> Any:
+    """
+    Run a Python AsyncIO coroutine function within a new event loop using a thread, and return the result / raise any exceptions
+    as if it were ran normally within an AsyncIO function.
+    
+    This will usually allow you to run coroutines from a synchronous function without running into the dreaded "Event loop is already
+    running" error - since the coroutine will be ran inside of a thread with it's own dedicated event loop.
+    
+    **Example Usage**::
+    
+        >>> async def example_func(lorem: int, ipsum: int):
+        ...     if lorem > 100: raise AttributeError("lorem is greater than 100!")
+        ...     return f"example: {lorem + ipsum}"
+        >>> run_coro_thread(example_func, 10, 20)
+        example: 30
+        >>> run_coro_thread(example_func, 3, ipsum=6)
+        example: 9
+        >>> run_coro_thread(example_func, lorem=40, ipsum=1)
+        example: 41
+        >>> run_coro_thread(example_func, 120, 50)
+        File "", line 2, in example_func
+            if lorem > 100: raise AttributeError("lorem is greater than 100!")
+        AttributeError: lorem is greater than 100!
+    
+    Creates a new :class:`threading.Thread` with the target :func:`.coro_thread_func` (via :func:`.run_coro_thread_base`), passing
+    the coroutine ``func`` along with the passed positional ``args`` and keyword ``kwargs``, which creates a new event loop, and
+    then runs ``func`` within that thread event loop.
+    
+    Uses the private :class:`queue.Queue` threading queue :attr:`._coro_thread_queue` to safely relay back to the calling thread -
+    either the result from the coroutine, or an exception if one was raised while trying to run the coroutine.
+    
+    :param callable func: A reference to the ``async def`` coroutine function that you want to run
+    :param args:          Positional arguments to pass-through to the coroutine function
+    :param kwargs:        Keyword arguments to pass-through to the coroutine function
+    :return Any coro_res: The result returned from the coroutine ``func``
+    """
+    t_co = run_coro_thread_base(func, *args, **kwargs, _output_queue=_coro_thread_queue)
+    t_co.join()
+    
+    res = _coro_thread_queue.get(block=True, timeout=10)
+    if isinstance(res, (Exception, BaseException)):
+        raise res
+    return res
+    
 
 def run_sync(func, *args, **kwargs):
     """

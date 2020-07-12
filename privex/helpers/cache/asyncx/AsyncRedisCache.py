@@ -2,6 +2,7 @@ import asyncio
 import pickle
 from typing import Any, Union, Optional
 
+from aioredis.commands import ContextRedis
 from async_property import async_property
 
 from privex.helpers.common import empty
@@ -13,9 +14,12 @@ from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
 from privex.helpers.types import VAL_FUNC_CORO
 
 # if plugin.HAS_ASYNC_REDIS:
-from privex.helpers.plugin import get_redis_async
+from privex.helpers.plugin import get_redis_async, close_redis_async
 from privex.helpers.cache.asyncx.base import AsyncCacheAdapter
 import aioredis
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class AsyncRedisCache(AsyncCacheAdapter):
@@ -62,8 +66,6 @@ class AsyncRedisCache(AsyncCacheAdapter):
 
         >>> AsyncRedisCache.pickle_default = False
 
-
-
     """
     
     pickle_default: bool = True
@@ -80,8 +82,11 @@ class AsyncRedisCache(AsyncCacheAdapter):
     from Redis as-is, with no serialisation (this may require you to manually serialize complex types such
     as ``dict`` and ``Decimal`` before insertion, and un-serialise after retrieval).
     """
-
-    _redis_conn: aioredis.Redis
+    adapter_enter_reconnect: bool = True
+    adapter_exit_close: bool = True
+    
+    _redis_conn: Optional[Union[aioredis.Redis, aioredis.ConnectionsPool]]
+    _redis: Optional[ContextRedis]
     
     def __init__(self, use_pickle: bool = None, redis_instance: aioredis.Redis = None, *args, **kwargs):
         """
@@ -98,7 +103,11 @@ class AsyncRedisCache(AsyncCacheAdapter):
 
         :param redis.Redis redis_instance: If this isn't ``None`` / ``False``, then this Redis instance will be
                                            used instead of the global one from :py:func:`.get_redis`
-
+        
+        :keyword bool enter_reconnect: Pass ``enter_reconnect=False`` to disable calling :meth:`.reconnect` when entering this cache
+                                       adapter as a context manager (:meth:`.__aenter__`)
+        :keyword bool exit_close: Pass ``exit_close=False`` to disable calling :meth:`.close` when exiting this cache
+                                  adapter as a context manager (:meth:`.__aexit__`)
         """
         super().__init__(*args, **kwargs)
         self._redis = None if not redis_instance else redis_instance
@@ -107,14 +116,14 @@ class AsyncRedisCache(AsyncCacheAdapter):
     
     @async_property
     async def redis(self) -> aioredis.Redis:
-        if self._redis_conn is None:
-            self._redis_conn = await get_redis_async()
+        # if self._redis_conn is None:
+        #     self._redis_conn = await get_redis_async()
         # if self._redis is not None:
         #     return self._redis
         # return self._redis
-        if self._redis is None:
-            self._redis = await self._redis_conn
-        return self._redis
+        # if self._redis is None:
+        #     self._redis = await self.connect()
+        return await self.connect()
 
     async def get(self, key: str, default: Any = None, fail: bool = False) -> Any:
         key = str(key)
@@ -153,12 +162,22 @@ class AsyncRedisCache(AsyncCacheAdapter):
         await self.set(key=key, value=v, timeout=timeout)
         return v
     
-    async def __aenter__(self):
-        return self
+    async def connect(self, *args, **kwargs) -> ContextRedis:
+        if not self._redis_conn:
+            self._redis_conn = await get_redis_async()
+        if not self._redis:
+            self._redis = await self._redis_conn
+        return self._redis
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def close(self):
         if self._redis is not None:
+            log.debug("Closing AsyncIO Redis instance %s._redis", self.__class__.__name__)
             self._redis.close()
-            await self._redis.wait_closed()
             self._redis = None
+        # Closing the Redis connection directly from this method usually leads to problems...
+        # It's safest to just set it to None and then call close_redis_async()
+        if self._redis_conn is not None:
+            log.debug("Clearing AsyncIO Redis connection pool %s._redis_conn", self.__class__.__name__)
+            self._redis_conn = None
+        await close_redis_async()
 

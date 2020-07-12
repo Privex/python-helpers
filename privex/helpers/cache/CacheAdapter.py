@@ -2,6 +2,9 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Union, Coroutine, Awaitable
 
+from privex.helpers.asyncx import await_if_needed
+from privex.helpers.common import empty_if
+
 from privex.helpers.exceptions import CacheNotFound
 from privex.helpers.settings import DEFAULT_CACHE_TIMEOUT
 from privex.helpers.types import VAL_FUNC_CORO
@@ -18,9 +21,32 @@ class CacheAdapter(ABC):
     For an example implementation of CacheAdapter, see :class:`privex.helpers.cache.MemoryCache`
     
     """
+
+    adapter_enter_reconnect: bool = True
+    """
+    Controls whether :meth:`.__enter__` automatically calls :meth:`.reconnect` to clear and re-create any previous
+    connections/instances for the adapter.
+    """
+    adapter_exit_close: bool = True
+    """
+    Controls whether :meth:`.__exit__` automatically calls :meth:`.close` to close any connections/instances and destroy
+    library class instances from the current adapter instance.
+    """
+
+    ins_enter_reconnect: bool
+    """
+    Per-instance version of :attr:`.adapter_enter_reconnect`, which is set via ``enter_reconnect`` the constructor.
+    When ``__init__`` ``enter_reconnect`` is empty, it inherits the class attribute  value from :attr:`.adapter_enter_reconnect`
+    """
+    ins_exit_close: bool
+    """
+    Per-instance version of :attr:`.adapter_exit_close`, which is set via ``exit_close`` the constructor.
+    When ``__init__`` ``exit_close`` is empty, it inherits the class attribute  value from :attr:`.adapter_exit_close`
+    """
     
-    def __init__(self, *args, **kwargs):
-        pass
+    def __init__(self, *args, enter_reconnect: Optional[bool] = None, exit_close: Optional[bool] = None, **kwargs):
+        self.ins_enter_reconnect = empty_if(enter_reconnect, self.adapter_enter_reconnect)
+        self.ins_exit_close = empty_if(exit_close, self.adapter_exit_close)
     
     @abstractmethod
     def get(self, key: str, default: Any = None, fail: bool = False) -> Any:
@@ -176,6 +202,29 @@ class CacheAdapter(ABC):
             self.set(key=key, value=k, timeout=timeout)
         return k
 
+    def close(self, *args, **kwargs) -> Any:
+        """
+        Close any cache library connections, and destroy their local class instances by setting them to ``None``.
+        """
+        return f"close() is not implemented by {self.__class__.__name__}"
+
+    def connect(self, *args, **kwargs) -> Any:
+        """
+        Create an instance of the library used to interact with the caching system, ensure it's connection is open,
+        and store the instance on this class instance - only if not already connected.
+
+        Should return the class instance which was created.
+        """
+        return f"close() is not implemented by {self.__class__.__name__}"
+
+    def reconnect(self, *args, **kwargs) -> Any:
+        """
+        Calls :meth:`.close` to close any previous connections and cleanup instances, then re-create the
+        connection(s)/instance(s) by calling :meth:`.connect`
+        """
+        self.close()
+        return self.connect()
+
     def __getitem__(self, item):
         try:
             return self.get(key=item, fail=True)
@@ -185,9 +234,39 @@ class CacheAdapter(ABC):
     def __setitem__(self, key, value):
         return self.set(key=key, value=value)
     
+    async def __aenter__(self):
+        """
+        Before starting a context manager, we close and cleanup any previous connection and re-create a fresh connection
+        and instance, ensuring no conflicts such as connections/instances attached to other AsyncIO event loops :)
+        """
+        if self.ins_enter_reconnect:
+            await await_if_needed(self.reconnect())
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """
+        Once a context manager is finished, we close and cleanup any instances / connections, ensuring no conflicts
+        for code that might want to use the cache adapter in a different event loops.
+        """
+        if self.ins_exit_close:
+            await await_if_needed(self.reconnect())
+        return None
+    
     def __enter__(self):
+        """
+        Before starting a context manager, we close and cleanup any previous connection and re-create a fresh connection
+        and instance, ensuring no conflicts such as connections/instances attached to other threads :)
+        """
+        if self.ins_enter_reconnect:
+            self.reconnect()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+        """
+        Once a context manager is finished, we close and cleanup any instances / connections, ensuring no conflicts
+        for code that might want to use the cache adapter in a different threads / event loops.
+        """
+        if self.ins_exit_close:
+            self.close()
+        return None
 

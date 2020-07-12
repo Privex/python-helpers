@@ -38,6 +38,7 @@ init file ``__init__.py``) - these functions/classes provide a high-level entry 
       :toctree: cache
 
       cached
+      async_cached
 
    
    .. rubric:: Classes
@@ -46,6 +47,7 @@ init file ``__init__.py``) - these functions/classes provide a high-level entry 
       :toctree: cache
    
       CacheWrapper
+      AsyncCacheWrapper
 
 
 Synchronous Cache Adapters

@@ -30,8 +30,11 @@ class AsyncMemoryCache(AsyncCacheAdapter):
         'NOT FOUND'
 
     """
+    adapter_enter_reconnect: bool = True
+    adapter_exit_close: bool = True
+    
     __CACHE = {}
-
+    
     async def get(self, key: str, default: Any = None, fail: bool = False) -> Any:
         key = str(key)
         c = self.__CACHE
