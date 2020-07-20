@@ -127,15 +127,18 @@ class TestNet(PrivexBaseCase):
         self.assertIsNone(hosts['fe80::5123'])
         self.assertEqual(hosts['2a07:e00::333'], 'se.dns.privex.io')
 
+    @pytest.mark.xfail()
     def test_check_host(self):
         self.assertTrue(helpers.check_host('hiveseed-se.privex.io', 2001))
         self.assertFalse(helpers.check_host('hiveseed-se.privex.io', 9991))
 
+    @pytest.mark.xfail()
     def test_check_host_send(self):
         http_req = b"GET / HTTP/1.1\n\n"
         self.assertTrue(helpers.check_host('files.privex.io', 80, send=http_req))
         self.assertFalse(helpers.check_host('files.privex.io', 9991))
 
+    @pytest.mark.xfail()
     def test_check_host_throw(self):
         with self.assertRaises(ConnectionRefusedError):
             helpers.check_host('files.privex.io', 9991, throw=True)
@@ -413,17 +416,19 @@ class TestAsyncNet(PrivexBaseCase):
         """Test :func:`.get_rdns` raises :class:`.ReverseDNSNotFound` when given a valid IP that has no rDNS records"""
         with self.assertRaises(helpers.ReverseDNSNotFound):
             loop_run(helpers.get_rdns_async('192.168.5.1'))
-    
+
+    @pytest.mark.xfail()
     def test_check_host_async(self):
         self.assertTrue(loop_run(helpers.check_host_async('hiveseed-se.privex.io', 2001)))
         self.assertFalse(loop_run(helpers.check_host_async('hiveseed-se.privex.io', 9991)))
 
+    @pytest.mark.xfail()
     def test_check_host_async_send(self):
         http_req = b"GET / HTTP/1.1\n\n"
         self.assertTrue(loop_run(helpers.check_host_async('files.privex.io', 80, send=http_req)))
-        # self.assertTrue(loop_run(helpers.check_host_async('files.privex.io', 443)))
         self.assertFalse(loop_run(helpers.check_host_async('files.privex.io', 9991)))
 
+    @pytest.mark.xfail()
     def test_check_host_async_throw(self):
         with self.assertRaises(ConnectionRefusedError):
             loop_run(helpers.check_host_async('files.privex.io', 9991, throw=True))

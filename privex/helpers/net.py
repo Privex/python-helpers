@@ -793,7 +793,7 @@ def check_host(host: IP_OR_STR, port: AnyNum, version='any', throw=False, **kwar
     timeout, send = kwargs.get('timeout', 'n/a'), kwargs.get('send')
     if timeout == 'n/a':
         t = socket.getdefaulttimeout()
-        timeout = 5.0 if not t else t
+        timeout = 10.0 if not t else t
     
     s_ver = socket.AF_INET
     ip = resolve_ip(host, version)
@@ -861,7 +861,7 @@ async def check_host_async(host: IP_OR_STR, port: AnyNum, version='any', throw=F
     timeout, send = kwargs.get('timeout', 'n/a'), kwargs.get('send')
     if timeout == 'n/a':
         t = socket.getdefaulttimeout()
-        timeout = 5.0 if not t else t
+        timeout = 10.0 if not t else t
     
     loop = asyncio.get_event_loop()
     s_ver = socket.AF_INET
