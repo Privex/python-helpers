@@ -25,6 +25,7 @@ AsyncIO Helpers / Wrappers
       is_async_context
       loop_run
       run_coro_thread
+      run_coro_thread_async
       run_coro_thread_base
       run_sync
    

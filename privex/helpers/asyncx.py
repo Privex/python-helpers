@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 __all__ = [
     'awaitable', 'AWAITABLE_BLACKLIST_MODS', 'AWAITABLE_BLACKLIST', 'AWAITABLE_BLACKLIST_FUNCS', 'run_sync', 'aobject',
     'call_sys_async', 'async_sync', 'awaitable_class', 'AwaitableMixin', 'loop_run', 'is_async_context', 'await_if_needed',
-    'get_async_type', 'run_coro_thread', 'run_coro_thread_base', 'coro_thread_func'
+    'get_async_type', 'run_coro_thread', 'run_coro_thread_async', 'run_coro_thread_base', 'coro_thread_func'
 ]
 
 
@@ -136,6 +136,15 @@ def run_coro_thread(func: callable, *args, **kwargs) -> Any:
     Run a Python AsyncIO coroutine function within a new event loop using a thread, and return the result / raise any exceptions
     as if it were ran normally within an AsyncIO function.
     
+    
+    .. Caution:: If you're wanting to run a coroutine within a thread from an AsyncIO function/method, then you should
+                 use :func:`.run_coro_thread_async` instead, which uses :func:`asyncio.sleep` while waiting for a result/exception
+                 to be transmitted via a queue.
+             
+                 This allows you to run and wait for multiple coroutine threads simultaneously, as there's no synchronous blocking
+                 wait - unlike this function.
+    
+    
     This will usually allow you to run coroutines from a synchronous function without running into the dreaded "Event loop is already
     running" error - since the coroutine will be ran inside of a thread with it's own dedicated event loop.
     
@@ -174,7 +183,59 @@ def run_coro_thread(func: callable, *args, **kwargs) -> Any:
     if isinstance(res, (Exception, BaseException)):
         raise res
     return res
+
+
+async def run_coro_thread_async(func: callable, *args, _queue_timeout=30.0, _queue_sleep=0.05, **kwargs) -> Any:
+    """
+    AsyncIO version of :func:`.run_coro_thread` which uses :func:`asyncio.sleep` while waiting on a result from the queue,
+    allowing you to run multiple AsyncIO coroutines which call blocking synchronous code - simultaneously,
+    e.g. by using :func:`asyncio.gather`
     
+    Below is an example of running an example coroutine ``hello`` which runs the synchronous blocking ``time.sleep``.
+    Using :func:`.run_coro_thread_async` plus :func:`asyncio.gather` - we can run ``hello`` 4 times simultaneously,
+    despite the use of the blocking :func:`time.sleep`.
+    
+    **Basic usage**::
+    
+        >>> import asyncio
+        >>> from privex.helpers.asyncx import run_coro_thread_async
+        >>> async def hello(world):
+        ...     time.sleep(1)
+        ...     return world * 10
+        >>> await asyncio.gather(run_coro_thread_async(hello, 5), run_coro_thread_async(hello, 15),
+        ...                      run_coro_thread_async(hello, 90), run_coro_thread_async(hello, 25))
+        [50, 150, 900, 250]
+    
+    
+    :param callable func: A reference to the ``async def`` coroutine function that you want to run
+    :param args:          Positional arguments to pass-through to the coroutine function
+    :param kwargs:        Keyword arguments to pass-through to the coroutine function
+    :param float|int _queue_timeout: (default: ``30``) Maximum amount of seconds to wait for a result or exception
+                                     from ``func`` before giving up.
+    :param _queue_sleep: (default: ``0.05``) Amount of time to AsyncIO sleep between each check of the result queue
+    :return Any coro_res: The result returned from the coroutine ``func``
+    """
+    _queue_timeout, _queue_sleep = float(_queue_timeout), float(_queue_sleep)
+    thread_waited = 0.0
+    q = queue.Queue()
+    t_co = run_coro_thread_base(func, *args, **kwargs, _output_queue=q)
+    
+    res = NO_RESULT
+    while res == NO_RESULT:
+        if thread_waited >= _queue_timeout:
+            raise TimeoutError(f"No thread result after waiting {thread_waited} seconds...")
+        try:
+            _res = q.get_nowait()
+            if isinstance(_res, (Exception, BaseException)):
+                raise _res
+            res = _res
+        except queue.Empty:
+            thread_waited += _queue_sleep
+            await asyncio.sleep(_queue_sleep)
+    t_co.join(5)
+    
+    return res
+
 
 def run_sync(func, *args, **kwargs):
     """

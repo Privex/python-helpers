@@ -1,5 +1,7 @@
 import asyncio
 import inspect
+import time
+from datetime import datetime
 from time import sleep
 from typing import Union, Coroutine, Type, Callable
 
@@ -275,4 +277,25 @@ class TestAsyncXThread(PrivexBaseCase):
         with self.assertRaisesRegex(AttributeError, 'ipsum over 100'):
             helpers.run_coro_thread(another_func, 5, 900)
 
-
+    def test_run_coro_thread_async(self):
+        """
+        Test :func:`.run_coro_thread_async` using :func:`asyncio.gather` to confirm coroutines with blocking synchronous code
+        are being ran simultaneously despite their blocking synchronous code.
+        """
+        rcta = helpers.run_coro_thread_async
+        
+        async def _hello(world):
+            # time.sleep is used in-place of a synchronous blocking function
+            time.sleep(1)
+            return world * 10
+        
+        async def hello():
+            return await asyncio.gather(rcta(_hello, 5), rcta(_hello, 20), rcta(_hello, 2), rcta(_hello, 80))
+        
+        start = datetime.utcnow()
+        res = helpers.loop_run(hello())
+        end = datetime.utcnow()
+        # After running 4 instances of _hello using run_coro_thread_async, check that no more than
+        # 2 seconds have passed - if they were ran synchronously, they would've taken 4 or more seconds.
+        self.assertLessEqual((end - start).total_seconds(), 2)
+        self.assertListEqual(res, [50, 200, 20, 800])
