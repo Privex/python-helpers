@@ -1,7 +1,10 @@
 """
 Test cases related to :py:mod:`privex.helpers.net` or generally network related functions such as :py:func:`.ping`
 """
+import socket
 import warnings
+
+from privex.helpers import loop_run
 from tests import PrivexBaseCase
 from privex import helpers
 
@@ -123,6 +126,19 @@ class TestNet(PrivexBaseCase):
         self.assertIsNone(hosts['192.168.5.1'])
         self.assertIsNone(hosts['fe80::5123'])
         self.assertEqual(hosts['2a07:e00::333'], 'se.dns.privex.io')
+
+    def test_check_host(self):
+        self.assertTrue(helpers.check_host('hiveseed-se.privex.io', 2001))
+        self.assertFalse(helpers.check_host('hiveseed-se.privex.io', 9991))
+
+    def test_check_host_send(self):
+        http_req = b"GET / HTTP/1.1\n\n"
+        self.assertTrue(helpers.check_host('files.privex.io', 80, send=http_req))
+        self.assertFalse(helpers.check_host('files.privex.io', 9991))
+
+    def test_check_host_throw(self):
+        with self.assertRaises(ConnectionRefusedError):
+            helpers.check_host('files.privex.io', 9991, throw=True)
 
 
 class TestNetResolveIP(PrivexBaseCase):
@@ -246,3 +262,170 @@ class TestNetResolveIP(PrivexBaseCase):
 
         self.assertIn('2a07:e00::333', ips['2a07:e00::333'])
         self.assertIsNone(ips['8.8.4.4'])
+
+
+class TestAsyncResolveIP(PrivexBaseCase):
+    # --- privex.helpers.net.resolve_ips ---
+    def test_resolve_ips_ipv4_addr(self):
+        """Test :func:`.resolve_ips` returns the same IPv4 address passed to it"""
+        ips = loop_run(helpers.resolve_ips_async('185.130.44.5'))
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '185.130.44.5')
+    
+    def test_resolve_ips_ipv6_addr(self):
+        """Test :func:`.resolve_ips` returns the same IPv6 address passed to it"""
+        ips = loop_run(helpers.resolve_ips_async('2a07:e00::333'))
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '2a07:e00::333')
+    
+    def test_resolve_ips_ipv4_addr_invalid(self):
+        """Test :func:`.resolve_ips` raises :class:`.AttributeError` when ``version`` is v4 but an IPv6 address was passed"""
+        with self.assertRaises(AttributeError):
+            loop_run(helpers.resolve_ips_async('2a07:e00::333', 'v4'))
+    
+    def test_resolve_ips_ipv6_addr_invalid(self):
+        """Test :func:`.resolve_ips` raises :class:`.AttributeError` when ``version`` is v6 but an IPv4 address was passed"""
+        with self.assertRaises(AttributeError):
+            loop_run(helpers.resolve_ips_async('185.130.44.5', 'v6'))
+    
+    def test_resolve_ips_hiveseed(self):
+        """Test :func:`.resolve_ips` returns expected v4 + v6 for ``hiveseed-fin.privex.io``"""
+        ips = helpers.resolve_ips('hiveseed-fin.privex.io')
+        self.assertEqual(len(ips), 2)
+        self.assertIn('2a01:4f9:2a:3d4::2', ips)
+        self.assertIn('95.216.3.171', ips)
+    
+    def test_resolve_ips_hiveseed_v4(self):
+        """Test :func:`.resolve_ips` returns only v4 for ``hiveseed-fin.privex.io`` when version is set to v4"""
+        ips = loop_run(helpers.resolve_ips_async('hiveseed-fin.privex.io', 'v4'))
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '95.216.3.171')
+    
+    def test_resolve_ips_hiveseed_v6(self):
+        """Test :func:`.resolve_ips` returns only v6 for ``hiveseed-fin.privex.io`` when version is set to v6"""
+        ips = helpers.resolve_ips('hiveseed-fin.privex.io', 'v6')
+        self.assertEqual(len(ips), 1)
+        self.assertEqual(ips[0], '2a01:4f9:2a:3d4::2')
+    
+    def test_resolve_ips_v4_convert_false(self):
+        """Test :func:`.resolve_ips` returns an empty list for ``microsoft.com`` when v6 requested without v4_convert"""
+        ips = loop_run(helpers.resolve_ips_async('microsoft.com', 'v6', v4_convert=False))
+        self.assertEqual(len(ips), 0)
+    
+    def test_resolve_ips_v4_convert(self):
+        """Test :func:`.resolve_ips` returns IPv6-wrapped IPv4 addresses for ``microsoft.com`` when v4_convert is enabled + v6 version"""
+        ips = loop_run(helpers.resolve_ips_async('microsoft.com', 'v6', v4_convert=True))
+        if ips is None or len(ips) == 0:
+            return pytest.skip(
+                f"Skipping test TestNetResolveIP.test_resolve_ips_v4_convert as v6-wrapped IPv4 addresses "
+                f"aren't supported on this platform."
+            )
+        self.assertTrue(ips[0].startswith('::ffff:'))
+    
+    # --- privex.helpers.net.resolve_ip ---
+    
+    def test_resolve_ip_v4_convert(self):
+        """Test :func:`.resolve_ip` returns an IPv6-wrapped IPv4 address for ``microsoft.com`` when v4_convert is enabled + v6 version"""
+        ip = loop_run(helpers.resolve_ip_async('microsoft.com', 'v6', v4_convert=True))
+        if ip is None:
+            return pytest.skip(
+                f"Skipping test TestNetResolveIP.test_resolve_ip_v4_convert as v6-wrapped IPv4 addresses "
+                f"aren't supported on this platform."
+            )
+        self.assertTrue(ip.startswith('::ffff:'))
+    
+    def test_resolve_ip_hiveseed(self):
+        """Test :func:`.resolve_ip` returns expected either correct v4 or v6 for ``hiveseed-fin.privex.io``"""
+        self.assertIn(loop_run(helpers.resolve_ip_async('hiveseed-fin.privex.io')), ['95.216.3.171', '2a01:4f9:2a:3d4::2'])
+    
+    def test_resolve_ip_hiveseed_v4(self):
+        """Test :func:`.resolve_ip` returns only v4 for ``hiveseed-fin.privex.io`` when version is v4"""
+        self.assertEqual(loop_run(helpers.resolve_ip_async('hiveseed-fin.privex.io', 'v4')), '95.216.3.171')
+    
+    def test_resolve_ip_hiveseed_v6(self):
+        """Test :func:`.resolve_ip` returns only v6 for ``hiveseed-fin.privex.io`` when version is v6"""
+        self.assertEqual(loop_run(helpers.resolve_ip_async('hiveseed-fin.privex.io', 'v6')), '2a01:4f9:2a:3d4::2')
+    
+    @staticmethod
+    async def _resolve_multi_async(*addr, version='any', v4_convert=False):
+        res = []
+        async for x in helpers.resolve_ips_multi_async(*addr, version=version, v4_convert=v4_convert):
+            res.append(x)
+        return res
+
+    def _resolve_multi(self, *addr, version='any', v4_convert=False):
+        return loop_run(self._resolve_multi_async(*addr, version=version, v4_convert=v4_convert))
+
+    # --- privex.helpers.net.resolve_ips_multi ---
+    def test_resolve_ips_multi_any(self):
+        """Test :func:`.resolve_ips_multi` with 2 domains and an IPv4 address"""
+        ips = dict(self._resolve_multi('hiveseed-fin.privex.io', 'privex.io', '8.8.4.4'))
+        self.assertIn('2a01:4f9:2a:3d4::2', ips['hiveseed-fin.privex.io'])
+        self.assertIn('95.216.3.171', ips['hiveseed-fin.privex.io'])
+        
+        self.assertIn('2a07:e00::abc', ips['privex.io'])
+        self.assertIn('185.130.44.10', ips['privex.io'])
+        
+        self.assertIn('8.8.4.4', ips['8.8.4.4'])
+    
+    def test_resolve_ips_multi_v4(self):
+        """Test :func:`.resolve_ips_multi` with 2 domains, an IPv4 address, and an IPv6 address with version ``v4``"""
+        ips = dict(self._resolve_multi('hiveseed-fin.privex.io', 'privex.io', '8.8.4.4', '2a07:e00::333', version='v4'))
+        self.assertNotIn('2a01:4f9:2a:3d4::2', ips['hiveseed-fin.privex.io'])
+        self.assertIn('95.216.3.171', ips['hiveseed-fin.privex.io'])
+        
+        self.assertNotIn('2a07:e00::abc', ips['privex.io'])
+        self.assertIn('185.130.44.10', ips['privex.io'])
+        
+        self.assertIn('8.8.4.4', ips['8.8.4.4'])
+        self.assertIsNone(ips['2a07:e00::333'])
+    
+    def test_resolve_ips_multi_v6(self):
+        """Test :func:`.resolve_ips_multi` with 2 domains, an IPv4 address, and an IPv6 address with version ``v6``"""
+        ips = dict(self._resolve_multi('hiveseed-fin.privex.io', 'privex.io', '8.8.4.4', '2a07:e00::333', version='v6'))
+        self.assertIn('2a01:4f9:2a:3d4::2', ips['hiveseed-fin.privex.io'])
+        self.assertNotIn('95.216.3.171', ips['hiveseed-fin.privex.io'])
+        
+        self.assertIn('2a07:e00::abc', ips['privex.io'])
+        self.assertNotIn('185.130.44.10', ips['privex.io'])
+        
+        self.assertIn('2a07:e00::333', ips['2a07:e00::333'])
+        self.assertIsNone(ips['8.8.4.4'])
+
+
+class TestAsyncNet(PrivexBaseCase):
+    def test_get_rdns_privex_ns1_ip(self):
+        """Test resolving IPv4 and IPv6 addresses into ns1.privex.io"""
+        self.assertEqual(loop_run(helpers.get_rdns_async('2a07:e00::100')), 'ns1.privex.io')
+        self.assertEqual(loop_run(helpers.get_rdns_async('185.130.44.3')), 'ns1.privex.io')
+    
+    def test_get_rdns_privex_ns1_host(self):
+        """Test resolving rDNS for the domains ``steemseed-fin.privex.io`` and ``ns1.privex.io``"""
+        self.assertEqual(loop_run(helpers.get_rdns_async('ns1.privex.io')), 'ns1.privex.io')
+        self.assertEqual(loop_run(helpers.get_rdns_async('steemseed-fin.privex.io')), 'hiveseed-fin.privex.io')
+    
+    def test_get_rdns_invalid_domain(self):
+        """Test :func:`.get_rdns` raises :class:`.InvalidHost` when given a non-existent domain"""
+        with self.assertRaises(helpers.InvalidHost):
+            loop_run(helpers.get_rdns_async('non-existent.domain.example'))
+    
+    def test_get_rdns_no_rdns_records(self):
+        """Test :func:`.get_rdns` raises :class:`.ReverseDNSNotFound` when given a valid IP that has no rDNS records"""
+        with self.assertRaises(helpers.ReverseDNSNotFound):
+            loop_run(helpers.get_rdns_async('192.168.5.1'))
+    
+    def test_check_host_async(self):
+        self.assertTrue(loop_run(helpers.check_host_async('hiveseed-se.privex.io', 2001)))
+        self.assertFalse(loop_run(helpers.check_host_async('hiveseed-se.privex.io', 9991)))
+
+    def test_check_host_async_send(self):
+        http_req = b"GET / HTTP/1.1\n\n"
+        self.assertTrue(loop_run(helpers.check_host_async('files.privex.io', 80, send=http_req)))
+        # self.assertTrue(loop_run(helpers.check_host_async('files.privex.io', 443)))
+        self.assertFalse(loop_run(helpers.check_host_async('files.privex.io', 9991)))
+
+    def test_check_host_async_throw(self):
+        with self.assertRaises(ConnectionRefusedError):
+            loop_run(helpers.check_host_async('files.privex.io', 9991, throw=True))
+
+

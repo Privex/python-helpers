@@ -21,23 +21,27 @@ Network related helper code
     Copyright 2019     Privex Inc.   ( https://www.privex.io )
 
 """
+import asyncio
 import logging
 import platform
 import subprocess
 import socket
+
+from privex.helpers.common import empty_if, empty, byteify
+
 from privex.helpers.exceptions import BoundaryException, NetworkUnreachable, ReverseDNSNotFound, InvalidHost
 from privex.helpers import plugin
 from ipaddress import ip_address, IPv4Address, IPv6Address
-from typing import Union, Optional, List, Dict, Generator, Tuple
+from typing import Union, Optional, List, Dict, Generator, Tuple, AsyncGenerator
 
-from privex.helpers.types import IP_OR_STR
+from privex.helpers.types import IP_OR_STR, AnyNum
 
 log = logging.getLogger(__name__)
 
 __all__ = [
     'ip_to_rdns', '_check_boundaries', 'ip4_to_rdns', 'ip6_to_rdns', 'ip_is_v4', 'ip_is_v6',
-    'ping', 'resolve_ip', 'resolve_ips', 'resolve_ips_multi', 'get_rdns', 'get_rdns_multi',
-    'BoundaryException', 'NetworkUnreachable'
+    'ping', 'resolve_ip', 'resolve_ips', 'resolve_ips_multi', 'resolve_ip_async', 'resolve_ips_async', 'resolve_ips_multi_async',
+    'get_rdns', 'get_rdns_multi', 'get_rdns_async', 'check_host', 'check_host_async', 'BoundaryException', 'NetworkUnreachable'
 ]
 
 try:
@@ -265,6 +269,153 @@ def ping(ip: str, timeout: int = 30) -> bool:
         return 'bytes from {}'.format(ip) in out.decode('utf-8')
 
 
+def _sock_ver(version):
+    version = empty_if(version, 'any', zero=True, itr=True)
+    version = version.lower() if isinstance(version, str) and version not in [socket.AF_INET, socket.AF_INET6] else version
+    if version in [4, 'v4', '4', 'ipv4', 'inet', 'inet4']: version = socket.AF_INET
+    if version in [6, 'v6', '6', 'ipv6', 'inet6']: version = socket.AF_INET6
+    return version
+
+
+async def resolve_ips_async(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) -> List[str]:
+    """
+    AsyncIO version of :func:`.resolve_ips_async` - resolves the IPv4/v6 addresses for a given host (``addr``)
+    
+    
+    :param str|IPv4Address|IPv6Address addr: The hostname to resolve. If an IPv4 / IPv6 address is passed instead of a hostname,
+                                             it will be validated against ``version``, then returned in a single item list.
+
+    :param str|int version: Default: ``'any'`` - Return both IPv4 and IPv6 addresses (if both are found). If an IP address is passed,
+                            then both IPv4 and IPv6 addresses will be accepted. If set to one of the IPv4/IPv6 version choices, then a
+                            passed IP of the wrong version will raise :class:`.AttributeError`
+
+                            Choices:
+
+                              * **IPv4 Options**: ``4`` (int), ``'v4'``, ``'4'`` (str), ``'ipv4'``, ``'inet'``, ``'inet4'``
+                              * **IPv6 Options**: ``6`` (int), ``'v6'``, ``'6'`` (str), ``'ipv6'``, ``'inet6'``
+
+    :param bool v4_convert: (Default: ``False``) If set to ``True``, will allow IPv6-wrapped IPv4 addresses starting with ``::ffff:`` to
+                            be returned when requesting version ``v6`` from an IPv4-only hostname.
+
+    :raises AttributeError: Raised when an IPv4 address is passed and ``version`` is set to IPv6 - as well as vice versa (IPv6 passed
+                            while version is set to IPv4)
+
+    :return List[str] ips: Zero or more IP addresses in a list of :class:`str`'s
+    """
+    loop = asyncio.get_event_loop()
+    addr, version = str(addr), _sock_ver(version)
+    ips = []
+    ip = _is_ip(addr, version)
+    if ip: return [str(ip)]
+    try:
+        if version in [socket.AF_INET, socket.AF_INET6]:
+            _ips = await loop.getaddrinfo(addr, 2001, family=version, proto=socket.IPPROTO_TCP)
+        else:
+            _ips = await loop.getaddrinfo(addr, 2001, proto=socket.IPPROTO_TCP)
+        
+        for ip in _ips:
+            ips += [ip[-1][0]]
+        # If a hostname has no AAAA records, and we request AF_INET6, getaddrinfo often converts the A records
+        # into IPv6-wrapped IPv4 addresses like so: ``::ffff:13.77.161.179``
+        # Most people who specifically request IPv6 want only real IPv6 addresses, not IPv4 addresses wrapped in IPv6 format.
+        if not v4_convert:
+            ips = [ip for ip in ips if not ip.startswith('::ffff')]
+        return ips
+    except Exception as e:
+        log.warning("Exception occurred while resolving host %s - reason: %s %s", addr, type(e), str(e))
+        return ips
+
+
+async def resolve_ip_async(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) -> Optional[str]:
+    """
+    AsyncIO version of :func:`.resolve_ip` - resolves the IPv4/v6 address for a given host (``addr``)
+    """
+    ips = await resolve_ips_async(addr, version=version, v4_convert=v4_convert)
+    if len(ips) == 0:
+        return None
+    return ips[0]
+
+
+async def resolve_ips_multi_async(*addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) \
+        -> AsyncGenerator[Tuple[str, Optional[List[str]]], None]:
+    """
+    Async version of :func:`.resolve_ips_multi`. Resolve IPv4/v6 addresses for multiple hosts specified as positional arguments.
+    
+    Returns results as an AsyncIO generator, to allow for efficient handling of a large amount of hostnames to resolve.
+
+    Using the AsyncIO generator in a loop efficiently::
+
+        >>> async for host, ips in resolve_ips_multi_async('privex.io', 'cloudflare.com', 'google.com'):
+        ...     print(f"{host:<20} ->   {', '.join(ips)}")
+        ...
+        privex.io            ->   2a07:e00::abc, 185.130.44.10
+        cloudflare.com       ->   2606:4700::6811:af55, 2606:4700::6811:b055, 104.17.176.85, 104.17.175.85
+        google.com           ->   2a00:1450:4009:807::200e, 216.58.204.238
+
+    If you're only resolving a small number of hosts ( less than 100 or so ), you can simply comprehend the generator into
+    a :class:`list` and then turn the result into a :class:`dict` using ``dict()``, which will get you a dictionary of hosts mapped to
+    lists of IP addresses.
+
+    Dictionary Cast Examples::
+
+        >>> ips = [x async for x in resolve_ips_multi_async('privex.io', 'microsoft.com', 'google.com')]
+        >>> dict(ips)
+        {'privex.io': ['2a07:e00::abc', '185.130.44.10'],
+         'microsoft.com': ['104.215.148.63', '40.76.4.15', '40.112.72.205', '40.113.200.201', '13.77.161.179'],
+         'google.com': ['2a00:1450:4009:807::200e', '216.58.204.238']}
+        >>> dict([x async for x in resolve_ips_multi_async('privex.io', 'microsoft.com', 'google.com', version='v6')])
+        {'privex.io': ['2a07:e00::abc'], 'microsoft.com': [], 'google.com': ['2a00:1450:4009:81c::200e']}
+        >>> dict([x async for x in resolve_ips_multi_async('privex.io', 'this-does-not-exist', 'google.com', version='v6')])
+        {'privex.io': ['2a07:e00::abc'], 'this-does-not-exist': [], 'google.com': ['2a00:1450:4009:81c::200e']}
+         >>> dict([x async for x in resolve_ips_multi_async('privex.io', 'example.com', '127.0.0.1', version='v6')])
+        [resolve_ips_multi AttributeError] Invalid IP: 127.0.0.1 - Ex: <class 'AttributeError'> Passed address '127.0.0.1' was
+                                           an IPv4 address, but 'version' requested an IPv6 address.
+        {'privex.io': ['2a07:e00::abc'], 'example.com': ['2606:2800:220:1:248:1893:25c8:1946'], '127.0.0.1': None}
+
+
+    :param str|IPv4Address|IPv6Address addr: Hostname's to resolve / IP addresses to validate or pass-thru
+    :param str|int version: (Default: ``any``) - ``4`` (int), ``'v4'``, ``6`` (int), ``'v6'`` (see :func:`.resolve_ips` for more options)
+    :param bool v4_convert: (Default: ``False``) If set to ``True``, will allow IPv6-wrapped IPv4 addresses starting with ``::ffff:`` to
+                            be returned when requesting version ``v6`` from an IPv4-only hostname.
+
+    :return Tuple[str,Optional[List[str]] gen:  An async generator which returns tuples containing a hostname/IP, and a list of it's
+        resolved IPs. If the IP was rejected (e.g. IPv4 IP passed with ``v6`` ``version`` param), then the list may instead be ``None``.
+    
+    """
+    for a in addr:
+        try:
+            res = await resolve_ips_async(a, version=version, v4_convert=v4_convert)
+            yield (a, res)
+        except socket.gaierror as e:
+            log.warning("[resolve_ips_multi socket.gaierror] Failed to resolve host: %s - Ex: %s %s", addr, type(e), str(e))
+            yield (a, None)
+        except AttributeError as e:
+            log.warning("[resolve_ips_multi AttributeError] Invalid IP: %s - Ex: %s %s", a, type(e), str(e))
+            yield (a, None)
+
+
+def _is_ip(addr: str, version: int = None):
+    try:
+        res = _sock_validate_ip(addr, version=version)
+        return res
+    except AttributeError as e:
+        raise e
+    except ValueError:
+        return False
+
+
+def _sock_validate_ip(addr: IP_OR_STR, version: int, throw=True) -> Optional[Union[IPv4Address, IPv4Address]]:
+    ip = ip_address(addr)
+    ver = "v4" if ip_is_v4(ip) else "v6"
+    if version == socket.AF_INET and ver != 'v4':
+        if not throw: return None
+        raise AttributeError(f"Passed address '{addr}' was an IPv6 address, but 'version' requested an IPv4 address.")
+    if version == socket.AF_INET6 and ver != 'v6':
+        if not throw: return None
+        raise AttributeError(f"Passed address '{addr}' was an IPv4 address, but 'version' requested an IPv6 address.")
+    return ip
+
+
 def resolve_ips(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) -> List[str]:
     """
     With just a single hostname argument, both IPv4 and IPv6 addresses will be returned as strings::
@@ -335,36 +486,25 @@ def resolve_ips(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=Fa
     
     :return List[str] ips: Zero or more IP addresses in a list of :class:`str`'s
     """
-    addr = str(addr)
-    version = version.lower() if version not in [socket.AF_INET, socket.AF_INET6] else version
-    if version in [4, 'v4', '4', 'ipv4', 'inet', 'inet4']: version = socket.AF_INET
-    if version in [6, 'v6', '6', 'ipv6', 'inet6']: version = socket.AF_INET6
-    ips = []
+    addr, version, ips = str(addr), _sock_ver(version), []
+    ip = _is_ip(addr, version)
+    if ip: return [str(ip)]
     try:
-        ip = ip_address(addr)
-        ver = "v4" if ip_is_v4(ip) else "v6"
-        if version == socket.AF_INET and ver != 'v4':
-            raise AttributeError(f"Passed address '{addr}' was an IPv6 address, but 'version' requested an IPv4 address.")
-        if version == socket.AF_INET6 and ver != 'v6':
-            raise AttributeError(f"Passed address '{addr}' was an IPv4 address, but 'version' requested an IPv6 address.")
-        return [str(ip)]
-    except ValueError:
-        try:
-            if version in [socket.AF_INET, socket.AF_INET6]:
-                _ips = socket.getaddrinfo(addr, 2001, family=version, proto=socket.IPPROTO_TCP)
-            else:
-                _ips = socket.getaddrinfo(addr, 2001, proto=socket.IPPROTO_TCP)
-            for ip in _ips:
-                ips += [ip[-1][0]]
-            # If a hostname has no AAAA records, and we request AF_INET6, getaddrinfo often converts the A records
-            # into IPv6-wrapped IPv4 addresses like so: ``::ffff:13.77.161.179``
-            # Most people who specifically request IPv6 want only real IPv6 addresses, not IPv4 addresses wrapped in IPv6 format.
-            if not v4_convert:
-                ips = [ip for ip in ips if not ip.startswith('::ffff')]
-            return ips
-        except Exception as e:
-            log.warning("Exception occurred while resolving host %s - reason: %s %s", addr, type(e), str(e))
-            return ips
+        if version in [socket.AF_INET, socket.AF_INET6]:
+            _ips = socket.getaddrinfo(addr, 2001, family=version, proto=socket.IPPROTO_TCP)
+        else:
+            _ips = socket.getaddrinfo(addr, 2001, proto=socket.IPPROTO_TCP)
+        for ip in _ips:
+            ips += [ip[-1][0]]
+        # If a hostname has no AAAA records, and we request AF_INET6, getaddrinfo often converts the A records
+        # into IPv6-wrapped IPv4 addresses like so: ``::ffff:13.77.161.179``
+        # Most people who specifically request IPv6 want only real IPv6 addresses, not IPv4 addresses wrapped in IPv6 format.
+        if not v4_convert:
+            ips = [ip for ip in ips if not ip.startswith('::ffff')]
+        return ips
+    except Exception as e:
+        log.warning("Exception occurred while resolving host %s - reason: %s %s", addr, type(e), str(e))
+        return ips
 
 
 def resolve_ip(addr: IP_OR_STR, version: Union[str, int] = 'any', v4_convert=False) -> Optional[str]:
@@ -457,6 +597,54 @@ def resolve_ips_multi(*addr: IP_OR_STR, version: Union[str, int] = 'any', v4_con
         except AttributeError as e:
             log.warning("[resolve_ips_multi AttributeError] Invalid IP: %s - Ex: %s %s", a, type(e), str(e))
             yield (a, None)
+
+
+async def get_rdns_async(host: IP_OR_STR, throw=True, version='any', name_port=80) -> Optional[str]:
+    """
+    AsyncIO version of :func:`.get_rdns` - get the reverse DNS for a given host (IP address or domain)
+    
+        >>> from privex.helpers import get_rdns_async
+        >>> await get_rdns_async('185.130.44.10')
+        'web-se1.privex.io'
+        >>> await get_rdns_async('2a07:e00::333')
+        'se.dns.privex.io'
+        >>> await get_rdns_async('privex.io')
+        'web-se1.privex.io'
+    
+    :param str|IPv4Address|IPv6Address host: An IPv4/v6 address, or domain to lookup reverse DNS for.
+    :param bool throw: (Default: ``True``) When ``True``, will raise :class:`.ReverseDNSNotFound` or :class:`.InvalidHost` when no
+                       rDNS records can be found for ``host``, or when ``host`` is an invalid IP / non-existent domain.
+                       When ``False``, will simply return ``None`` when ``host`` is invalid, or no rDNS records are found.
+    
+    :param str|int version: IP version to use when looking up a domain/hostname (default: ``'any'``)
+    
+    :param int name_port: This generally isn't important. This port is passed to :func:`loop.getnameinfo` when looking
+                          up the reverse DNS for ``host``. Usually there's no reason to change this from the default.
+    
+    :raises ReverseDNSNotFound: When ``throw`` is True and no rDNS records were found for ``host``
+    :raises InvalidHost: When ``throw`` is True and ``host`` is an invalid IP address or non-existent domain/hostname
+    :return Optional[str] rDNS: The reverse DNS hostname for ``host`` (value of PTR record)
+    """
+    loop = asyncio.get_event_loop()
+    host = str(host)
+    try:
+        if not _is_ip(host):
+            orig_host = host
+            host = await resolve_ip_async(host, version=version)
+            if empty(host):
+                if throw:
+                    raise InvalidHost(f"Host '{orig_host}' is not a valid IP address, nor an existent domain")
+                return None
+        
+        res = await loop.getnameinfo((host, name_port))
+        rdns = res[0]
+        if _is_ip(rdns):
+            if throw: raise ReverseDNSNotFound(f"No reverse DNS records found for host '{host}' - result was: {rdns}")
+            return None
+        return rdns
+    except socket.gaierror as e:
+        if throw: raise InvalidHost(f"Host '{host}' is not a valid IP address, nor an existent domain: {type(e)} {str(e)}")
+    return None
 
 
 def get_rdns(host: IP_OR_STR, throw=True) -> Optional[str]:
@@ -558,3 +746,139 @@ def get_rdns_multi(*hosts: IP_OR_STR, throw=False) -> Generator[Tuple[str, Optio
     for h in hosts:
         yield (str(h), get_rdns(str(h), throw=throw))
 
+
+def check_host(host: IP_OR_STR, port: AnyNum, version='any', throw=False, **kwargs) -> bool:
+    """
+    Test if the service on port ``port`` for host ``host`` is working. AsyncIO version: :func:`.check_host_async`
+    
+    Basic usage (services which send the client data immediately after connecting)::
+    
+        >>> check_host('hiveseed-se.privex.io', 2001)
+        True
+        >>> check_host('hiveseed-se.privex.io', 9991)
+        False
+    
+    For some services, such as HTTP - it's necessary to transmit some data to the host before it will
+    send a response. Using the ``send`` kwarg, you can transmit an arbitrary string/bytes upon connection.
+    
+    Sending data to ``host`` after connecting::
+    
+        >>> check_host('files.privex.io', 80, send=b"GET / HTTP/1.1\\n\\n")
+        True
+    
+    
+    :param str|IPv4Address|IPv6Address host: Hostname or IP to test
+    :param int|str port: Port number on ``host`` to connect to
+    :param str|int version: When connecting to a hostname, this can be set to ``'v4'``, ``'v6'`` or similar
+                            to ensure the connection is via that IP version
+    
+    :param bool throw: (default: ``False``) When ``True``, will raise exceptions instead of returning ``False``
+    :param kwargs: Additional configuration options (see below)
+    
+    :keyword int receive: (default: ``100``) Amount of bytes to attempt to receive from the server (``0`` to disable)
+    :keyword bytes|str send: If ``send`` is specified, the data in ``send`` will be transmitted to the server before receiving.
+    :keyword int stype: Socket type, e.g. :attr:`socket.SOCK_STREAM`
+    
+    :keyword float|int timeout: Socket timeout. If not passed, uses the default from :func:`socket.getdefaulttimeout`.
+                                If the global default timeout is ``None``, then falls back to ``5.0``
+    
+    :raises socket.timeout: When ``throw=True`` and a timeout occurs.
+    :raises socket.gaierror: When ``throw=True`` and various errors occur
+    :raises ConnectionRefusedError: When ``throw=True`` and the connection was refused
+    :raises ConnectionResetError: When ``throw=True`` and the connection was reset
+    
+    :return bool success: ``True`` if successfully connected + sent/received data. Otherwise ``False``.
+    """
+    receive, stype = int(kwargs.get('receive', 100)), kwargs.get('stype', socket.SOCK_STREAM)
+    timeout, send = kwargs.get('timeout', 'n/a'), kwargs.get('send')
+    if timeout == 'n/a':
+        t = socket.getdefaulttimeout()
+        timeout = 5.0 if not t else t
+    
+    s_ver = socket.AF_INET
+    ip = resolve_ip(host, version)
+    
+    if ip_is_v6(ip): s_ver = socket.AF_INET6
+    
+    try:
+        with socket.socket(s_ver, stype) as s:
+            if timeout: s.settimeout(float(timeout))
+            s.connect((ip, int(port)))
+            if not empty(send):
+                s.sendall(byteify(send))
+            if receive > 0:
+                s.recv(int(receive))
+        return True
+    except (socket.timeout, ConnectionRefusedError, ConnectionResetError, socket.gaierror) as e:
+        if throw:
+            raise e
+    return False
+
+
+async def check_host_async(host: IP_OR_STR, port: AnyNum, version='any', throw=False, **kwargs) -> bool:
+    """
+    AsyncIO version of :func:`.check_host`. Test if the service on port ``port`` for host ``host`` is working.
+
+    Basic usage (services which send the client data immediately after connecting)::
+
+        >>> await check_host_async('hiveseed-se.privex.io', 2001)
+        True
+        >>> await check_host_async('hiveseed-se.privex.io', 9991)
+        False
+
+    For some services, such as HTTP - it's necessary to transmit some data to the host before it will
+    send a response. Using the ``send`` kwarg, you can transmit an arbitrary string/bytes upon connection.
+
+    Sending data to ``host`` after connecting::
+
+        >>> await check_host_async('files.privex.io', 80, send=b"GET / HTTP/1.1\\n\\n")
+        True
+
+
+    :param str|IPv4Address|IPv6Address host: Hostname or IP to test
+    :param int|str port: Port number on ``host`` to connect to
+    :param str|int version: When connecting to a hostname, this can be set to ``'v4'``, ``'v6'`` or similar
+                            to ensure the connection is via that IP version
+
+    :param bool throw: (default: ``False``) When ``True``, will raise exceptions instead of returning ``False``
+    :param kwargs: Additional configuration options (see below)
+
+    :keyword int receive: (default: ``100``) Amount of bytes to attempt to receive from the server (``0`` to disable)
+    :keyword bytes|str send: If ``send`` is specified, the data in ``send`` will be transmitted to the server before receiving.
+    :keyword int stype: Socket type, e.g. :attr:`socket.SOCK_STREAM`
+
+    :keyword float|int timeout: Socket timeout. If not passed, uses the default from :func:`socket.getdefaulttimeout`.
+                                If the global default timeout is ``None``, then falls back to ``5.0``
+
+    :raises socket.timeout: When ``throw=True`` and a timeout occurs.
+    :raises socket.gaierror: When ``throw=True`` and various errors occur
+    :raises ConnectionRefusedError: When ``throw=True`` and the connection was refused
+    :raises ConnectionResetError: When ``throw=True`` and the connection was reset
+
+    :return bool success: ``True`` if successfully connected + sent/received data. Otherwise ``False``.
+    """
+    receive, stype = int(kwargs.get('receive', 100)), kwargs.get('stype', socket.SOCK_STREAM)
+    timeout, send = kwargs.get('timeout', 'n/a'), kwargs.get('send')
+    if timeout == 'n/a':
+        t = socket.getdefaulttimeout()
+        timeout = 5.0 if not t else t
+    
+    loop = asyncio.get_event_loop()
+    s_ver = socket.AF_INET
+    ip = await resolve_ip_async(host, version)
+    
+    if ip_is_v6(ip): s_ver = socket.AF_INET6
+    
+    try:
+        with socket.socket(s_ver, stype) as s:
+            if timeout: s.settimeout(float(timeout))
+            await loop.sock_connect(s, (ip, int(port)))
+            if not empty(send):
+                await loop.sock_sendall(s, byteify(send))
+            if receive > 0:
+                await loop.sock_recv(s, int(receive))
+        return True
+    except (socket.timeout, ConnectionRefusedError, ConnectionResetError, socket.gaierror) as e:
+        if throw:
+            raise e
+    return False
