@@ -148,7 +148,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '2.18.0'
+VERSION = '2.19.0'
 
 
 

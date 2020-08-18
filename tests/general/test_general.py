@@ -26,7 +26,7 @@ import os
 from decimal import Decimal
 from os import path, makedirs
 from tempfile import TemporaryDirectory, NamedTemporaryFile, mkstemp
-from typing import Union, Tuple, List, TextIO, BinaryIO
+from typing import Dict, Union, Tuple, List, TextIO, BinaryIO
 from privex import helpers
 from tests import PrivexBaseCase
 import logging
@@ -483,4 +483,98 @@ class TestGeneralAlmost(PrivexBaseCase):
         self.assertTrue(helpers.almost('5', '5.001', test=True))
         with self.assertRaises(AssertionError):
             helpers.almost('5', '5.3', test=True)
+
+
+def hello_basic_str(x) -> str: return f'{x} world'
+def hello_basic_int(x) -> int: return 1234 + x
+def hello_generic(x) -> List[str]: return [x]
+def hello_generic2(x) -> Union[int, str]: return x
+def hello_generic3(x) -> Union[int, Union[dict, set], str]: return x
+
+
+class TestGeneralTypeExtract(PrivexBaseCase):
+    """
+    Test cases for :func:`.get_return_type`, :func:`.typing_to_base` and :func:`.extract_type`
+    """
+    def test_get_return_type_basic(self):
+        """Test :func:`.get_return_type` with functions returning basic python types"""
+        self.assertIs(helpers.get_return_type(hello_basic_str), str)
+        self.assertIs(helpers.get_return_type(hello_basic_int), int)
+    
+    def test_get_return_type_generic(self):
+        """Test :func:`.get_return_type` with functions returning generic :mod:`typing` types"""
+        g1, g2 = helpers.get_return_type(hello_generic), helpers.get_return_type(hello_generic2)
+        if hasattr(g1, '_name'):    # Python 3.6 doesn't have _name, so only test it if it exists.
+            self.assertEqual(g1._name, 'List')
+        self.assertEqual('typing.List[str]', repr(g1))
+        self.assertEqual('typing.Union[int, str]', repr(g2))
+        self.assertTupleEqual(g2.__args__, (int, str))
+    
+    def test_typing_to_base_basic(self):
+        """Test :func:`.typing_to_base` with basic :mod:`typing` types such as :class:`typing.List`"""
+        self.assertIs(helpers.typing_to_base(List[str]), list)
+        self.assertIs(helpers.typing_to_base(Dict[str, int]), dict)
+
+    def test_typing_to_base_union(self):
+        """Test :func:`.typing_to_base` with more complex :class:`typing.Union` types"""
+        self.assertTupleEqual(helpers.typing_to_base(Union[str, List[dict], int]), (str, list, int))
+        self.assertTupleEqual(helpers.typing_to_base(
+            Union[List[str], Union[Tuple[str, int, str], set], Dict[int, str]]
+        ), (list, tuple, set, dict))
+    
+    def test_typing_to_base_invalid(self):
+        """Test :func:`.typing_to_base` with non :mod:`typing` types such as :class:`str`"""
+        self.assertIs(helpers.typing_to_base(str), str)
+        self.assertIsNone(helpers.typing_to_base(str, return_orig=False))
+        with self.assertRaises(TypeError):
+            helpers.typing_to_base(str, fail=True)
+
+    def test_typing_to_base_union_no_clean(self):
+        """Test :func:`.typing_to_base` with clean_union disabled and enabled with a :class:`typing.Union`"""
+        b = helpers.typing_to_base(Union[str, List[dict], int], clean_union=False)
+        self.assertIs(b[0], str)
+        self.assertEqual(repr(b[1]), 'typing.List[dict]')
+        self.assertIs(b[2], int)
+        b = helpers.typing_to_base(Union[str, List[dict], int], clean_union=True)
+        self.assertIs(b[1], list)
+
+    def test_extract_type_type(self):
+        """Test :func:`.extract_type` with simple types such as :class:`str` and :class:`.PrivexBaseCase`"""
+        self.assertIs(helpers.extract_type(str), str)
+        self.assertIs(helpers.extract_type(int), int)
+        self.assertIs(helpers.extract_type(dict), dict)
+        self.assertIs(helpers.extract_type(PrivexBaseCase), PrivexBaseCase)
+
+    def test_extract_type_instance(self):
+        """Test :func:`.extract_type` with object instances"""
+        self.assertIs(helpers.extract_type(dict(hello='world')), dict)
+        self.assertIs(helpers.extract_type(list('world')), list)
+        self.assertIs(helpers.extract_type(set('world')), set)
+        
+        class Hello:
+            def __init__(self): pass
+        
+        self.assertIs(helpers.extract_type(Hello()), Hello)
+        self.assertIsInstance(Hello(), helpers.extract_type(Hello()))
+    
+    def test_extract_type_generic(self):
+        """Test :func:`.extract_type` with generic :mod:`typing` types such as :class:`typing.Tuple`"""
+        self.assertIs(helpers.extract_type(List[str]), list)
+        self.assertIs(helpers.extract_type(Tuple[int, str]), tuple)
+        self.assertIs(helpers.extract_type(Dict[str, int]), dict)
+        self.assertTupleEqual(helpers.extract_type(Union[str, int]), (str, int))
+    
+    def test_extract_type_func_basic(self):
+        """Test :func:`.extract_type` with functions that return basic types"""
+        self.assertIs(helpers.extract_type(hello_basic_str), str)
+        self.assertIs(helpers.extract_type(hello_basic_int), int)
+
+    def test_extract_type_func_generic(self):
+        """Test :func:`.extract_type` with functions that return :mod:`typing` generic types and unions"""
+        self.assertIs(helpers.extract_type(hello_generic), list)
+        self.assertTupleEqual(helpers.extract_type(hello_generic2), (int, str))
+        self.assertTupleEqual(helpers.extract_type(hello_generic3), (int, dict, set, str))
+
+
+
 

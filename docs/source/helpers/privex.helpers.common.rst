@@ -45,8 +45,10 @@ Common/General Helpers
       env_int
       env_keyval
       extract_settings
+      extract_type
       filter_form
       get_function_params
+      get_return_type
       human_name
       inject_items
       io_tail
@@ -59,6 +61,7 @@ Common/General Helpers
       shell_quote
       stringify
       tail
+      typing_to_base
    
    
 

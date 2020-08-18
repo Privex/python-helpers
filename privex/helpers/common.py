@@ -39,7 +39,7 @@ from subprocess import PIPE, STDOUT
 from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional, BinaryIO, Generator, Mapping
 from privex.helpers import settings
 from privex.helpers.collections import DictObject, OrderedDictObject
-from privex.helpers.types import T, K, V, C, USE_ORIG_VAR, STRBYTES, Number, NumberStr
+from privex.helpers.types import T, K, V, C, USE_ORIG_VAR, STRBYTES, NumberStr
 from privex.helpers.exceptions import NestedContextException
 
 
@@ -262,14 +262,15 @@ def parse_csv(line: str, csvsplit: str = ',') -> List[str]:
     return [x.strip() for x in line.strip().split(csvsplit)]
 
 
-def env_csv(env_key: str, env_default = None, csvsplit=',') -> List[str]:
+def env_csv(env_key: str, env_default=None, csvsplit=',') -> List[str]:
     """
     Quick n' dirty parsing of simple CSV formatted environment variables, with fallback
     to user specified ``env_default`` (defaults to None)
 
     Example:
 
-        >>> os.setenv('EXAMPLE', '  hello ,  world, test')
+        >>> import os
+        >>> os.environ['EXAMPLE'] = '  hello ,  world, test')
         >>> env_csv('EXAMPLE', [])
         ['hello', 'world', 'test']
         >>> env_csv('NONEXISTANT', [])
@@ -500,6 +501,226 @@ def extract_settings(prefix: str, _settings=settings, defaults=None, merge_conf=
             set_conf[_key] = v
     
     return {**defaults, **set_conf, **kwargs, **merge_conf}
+
+
+def get_return_type(f: callable) -> Optional[Union[type, object, callable]]:
+    """
+    Extract the return type for a function/method. Note that this only works with functions/methods which have their
+    return type annotated, e.g. ``def somefunc(x: int) -> float: return x * 2.1``
+    
+    .. Attention:: If you want to extract a function/method return type and have any Generic :mod:`typing` types simplified
+                   down to their native Python base types (important to be able to compare with :func:`.isinstance` etc.),
+                   then you should use :func:`.extract_type` instead (handles raw types, objects, and function pointers)
+    
+    
+    **Example 1** - Extracting a generic return type from a function::
+    
+        >>> def list_wrap(v: T) -> List[T]:
+        ...     return [v]
+        ...
+        >>> rt = get_return_type(list_wrap)
+        typing.List[~T]
+        >>> rt._name            # We can get the string type name via _name
+        'List'
+        >>> l = rt.__args__[0]  # We can access the types inside of the [] via .__args__
+        ~T
+        >>> l.__name__          # Get the name of 'l' - the type inside of the []
+        'T'
+    
+    **Example 2** - What happens if you use this on a function/method with no return type annotation?
+    
+    The answer is: **nothing** - it will simply return ``None`` if the function/method has no return type annotation::
+    
+        >>> def hello(x):
+        ...     return x * 5
+        >>> repr(get_return_type(hello))
+        'None'
+        
+        
+    :param callable f: A function/method to extract the return type from
+    :return return_type: The return type, usually either a :class:`.type` or a :class:`.object`
+    """
+    if f is None: return None
+    if not inspect.isclass(f) and any([inspect.isfunction(f), inspect.ismethod(f), inspect.iscoroutinefunction(f)]):
+        sig = inspect.signature(f)
+        ret = sig.return_annotation
+        # noinspection PyUnresolvedReferences,PyProtectedMember
+        if ret is inspect._empty or empty(ret, True):
+            return None
+        return ret
+    return f
+
+
+def typing_to_base(tp, fail=False, return_orig=True, clean_union=True) -> Optional[Union[type, object, callable, tuple, Tuple[type]]]:
+    """
+    Attempt to extract one or more native Python base types from a :mod:`typing` type, including generics such as ``List[str]``,
+    and combined types such as ``Union[list, str]``
+    
+        >>> typing_to_base(List[str])
+        list
+        >>> typing_to_base(Union[str, Dict[str, list], int])
+        (str, dict, int)
+        >>> typing_to_base(Union[str, Dict[str, list], int], clean_union=False)
+        (str, typing.Dict[str, list], int)
+        >>> typing_to_base(str)
+        str
+        >>> typing_to_base(str, fail=True)
+        TypeError: Failed to extract base type for type object: <class 'str'>
+        >>> repr(typing_to_base(str, return_orig=False))
+        'None'
+        
+    :param tp: The :mod:`typing` type object to extract base/native type(s) from.
+    :param bool fail: (Default: ``False``) If True, then raises :class:`.TypeError` if ``tp`` doesn't appear to be a :mod:`typing` type.
+    :param bool return_orig: (Default: ``True``) If True, returns ``tp`` as-is if it's not a typing type. When ``False``,
+                             non- :mod:`typing` types will cause ``None`` to be returned.
+    :param bool clean_union: (Default: ``True``) If True, :class:`typing.Union`'s will have each type
+                             converted/validated into a normal type using :func:`.extract_type`
+    :return type_res: Either a :class:`.type` base type, a :class:`.tuple` of types, a :mod:`typing` type object, or something else
+                      depending on what type ``tp`` was.
+    """
+    # We can't use isinstance() with Union generic objects, so we have to identify them by checking their repr string.
+    if repr(tp).startswith('typing.Union['):
+        # For Union's (including Optional[]), we iterate over the object's ``__args__`` which contains the Union's types,
+        # and pass each type through extract_type to cleanup any ``typing`` generics such as ``List[str]`` back into
+        # their native type (e.g. ``str`` for ``List[str]``)
+        ntypes = []
+        # noinspection PyUnresolvedReferences
+        targs = tp.__args__
+        for t in targs:
+            try:
+                ntypes.append(extract_type(t) if clean_union else t)
+            except Exception as e:
+                log.warning("Error while extracting type for %s (part of %s). Reason: %s - %s", t, repr(tp), type(e), str(e))
+                ntypes.append(t)
+        return tuple(ntypes)
+    # For Python 3.6, __origin__ contains the typing type without the generic part, while __orig_bases__ is a tuple containing the
+    # native/base type, and some typing type.
+    # On 3.7+, __origin__ contains the native/base type, while __orig_bases__ doesn't exist
+    if hasattr(tp, '__orig_bases__'): return tp.__orig_bases__[0]
+
+    # __origin__ / __extra__ are exposed by :mod:`typing` types, including generics such as Dict[str,str]
+    # original SO answer: https://stackoverflow.com/a/54241536/2648583
+    if hasattr(tp, '__origin__'): return tp.__origin__
+    if hasattr(tp, '__extra__'): return tp.__extra__
+    if fail:
+        raise TypeError(f"Failed to extract base type for type object: {repr(tp)}")
+    if return_orig:
+        return tp
+    return None
+
+
+def extract_type(tp: Union[type, callable, object], **kwargs) -> Optional[Union[type, object, callable, tuple, Tuple[type]]]:
+    """
+    Attempt to identify the :class:`.type` of a given value, or for functions/methods - identify their RETURN value type.
+    
+    This function can usually detect :mod:`typing` types, including generics such as ``List[str]``, and will attempt to extract
+    their native Python base type, e.g. :class:`.list`.
+    
+    For :class:`typing.Union` based types (including :class:`typing.Optional`), it can extract a tuple of base types, including
+    from nested :class:`typing.Union`'s - e.g. ``Union[str, list, Union[dict, set], int`` would be simplified down
+    to ``(str, list, dict, set, int)``
+
+    .. Attention:: If you want to extract the original return type from a function/method, including generic types such as ``List[str]``,
+                   then you should use :func:`.get_return_type` instead.
+
+    **Example 1** - convert a generic type e.g. ``Dict[str, str]`` into it's native type (e.g. ``dict``)::
+
+        >>> dtype = Dict[str, str]
+        >>> # noinspection PyTypeHints,PyTypeChecker
+        >>> isinstance({}, dtype)
+        TypeError: Subscripted generics cannot be used with class and instance checks
+        >>> extract_type(dtype)
+        dict
+        >>> isinstance({}, extract_type(dtype))
+        True
+
+    **Example 2** - extract the return type of a function/method, and if the return type is a generic (e.g. ``List[str]``), automatically
+    convert it into the native type (e.g. ``list``) for use in comparisons such as :func:`.isinstance`::
+
+        >>> def list_wrap(v: T) -> List[T]:
+        ...     return [v]
+        >>>
+        >>> extract_type(list_wrap)
+        list
+        >>> isinstance([1, 2, 3], extract_type(list_wrap))
+        True
+
+    **Example 3** - extract the type from an instantiated object, allowing for :func:`.isinstance` comparisons::
+
+        >>> from privex.helpers import DictObject
+        >>> db = DictObject(hello='world', lorem='ipsum')
+        {'hello': 'world', 'lorem': 'ipsum'}
+        >>> type_db = extract_type(db)
+        privex.helpers.collections.DictObject
+        >>> isinstance(db, type_db)
+        True
+        >>> isinstance(DictObject(test=123), type_db)
+        True
+    
+    **Example 4** - extract a tuple of types from a :class:`typing.Union` or :class:`typing.Optional` (inc. return types) ::
+        
+        >>> def hello(x) -> Optional[str]:
+        ...     return x * 5
+        ...
+        >>> extract_type(hello)
+        (str, NoneType)
+        >>> # Even with a Union[] containing a List[], another Union[] (containing a Tuple and set), and a Dict[],
+        >>> # extract_type is still able to recursively flatten and simplify it down to a tuple of base Python types
+        >>> extract_type(Union[
+        ...     List[str],
+        ...     Union[Tuple[str, int, str], set],
+        ...     Dict[int, str]
+        ... ])
+        (list, tuple, set, dict)
+    
+    
+    **Return Types**
+    
+    A :class:`.type` will be returned for most calls where ``tp`` is either:
+    
+        * Already a native :class:`.type` e.g. :class:`.list`
+        * A generic type such as ``List[str]`` (which are technically instances of :class:`.object`)
+        * A function/method with a valid return type annotation, including generic return types
+        * An instance of a class (an object), where the original type can be easily extracted via ``tp.__class__``
+    
+    If ``tp`` was an :class:`.object` and the type/class couldn't be extracted, then it would be returned in it's original object form.
+    
+    If ``tp`` was an unusual function/method which couldn't be detected as one, or issues occurred while extracting the return type,
+    then ``tp`` may be returned in it's original :class:`.callable` form.
+    
+    
+    :param tp: The type/object/function etc. to extract the most accurate type from
+    :return type|object|callable ret: A :class:`.type` will be returned for most calls, but may be an :class:`.object`
+                                      or :class:`.callable` if there were issues detecting the type.
+    """
+    # If tp is None, there's nothing we can do with it, so return None.
+    if tp is None: return None
+    # If 'tp' is a known native type, we don't need to extract anything, just return tp.
+    if tp in [list, set, tuple, dict, str, bytes, int, float, Decimal]: return tp
+    is_func = any([inspect.isfunction(tp), inspect.ismethod(tp), inspect.iscoroutinefunction(tp)])
+    # Functions count as class instances (instances of object), therefore to narrow down a real class/type instance,
+    # we have to confirm it's NOT a function/method/coro, NOT a raw class/type, but IS an instance of object.
+    # if not is_func and not inspect.isclass(tp) and isinstance(tp, object):
+    if not is_func and isinstance(tp, object):
+        # Handle extracting base types from generic :mod:`typing` objects, including tuples of types from Union's
+        tbase = typing_to_base(tp, return_orig=False)
+        if tbase is not None:    # If the result wasn't None, then we know it was a typing type and base type(s) were extracted properly
+            return tbase
+        # Before checking __class__, we make sure that tp is an instance by checking isclass(tp) is False
+        if not inspect.isclass(tp) and hasattr(tp, '__class__'):
+            return tp.__class__  # If tp isn't a typing type, __class__ (if it exists) should be the "type" of tp
+        return tp  # If all else fails, return tp as-is
+    
+    # If is_func matches at this point, we're dealing with a function/method/coroutine and need to extract the return type.
+    # To prevent an infinite loop, we set _sec_layer when passing the return type to extract_type(), ensuring that we don't
+    # call extract_type(rt) AGAIN if the return type just so happened to be a function
+    if is_func and not kwargs.get('_sec_layer'):
+        # Extract the original return type, then pass it through extract_type again, since if it's a generic type,
+        # we'll want to extract the native type from it, since generics like ``List[str]`` can't be used with ``isinstance()``
+        rt = get_return_type(tp)
+        return extract_type(rt, _sec_layer=True)
+    # If all else fails, return tp as-is
+    return tp
 
 
 def dec_round(amount: Decimal, dp: int = 2, rounding=None) -> Decimal:
@@ -768,7 +989,7 @@ def shell_quote(*args: str) -> str:
     return shlex.join(args) if hasattr(shlex, 'join') else " ".join([shlex.quote(a) for a in args]).strip()
 
 
-def call_sys(proc, *args, write: STRBYTES = None, **kwargs) -> Tuple[bytes, bytes]:
+def call_sys(proc, *args, write: STRBYTES = None, **kwargs) -> Union[Tuple[bytes, bytes], Tuple[str, str]]:
     """
     A small wrapper around :class:`subprocess.Popen` which allows executing processes, while optionally piping
     data (``write``) into the process's stdin, then finally returning the process's output and error results.
@@ -1033,9 +1254,9 @@ def almost(compare: NumberStr, *numbers: NumberStr, tolerance: NumberStr = Decim
         AssertionError
 
     
-    :param Decimal|int|float compare: The base number which all ``numbers`` will be compared against.
-    :param Decimal|int|float numbers: One or more numbers to compare against ``compare``
-    :param Decimal|int|float tolerance: (kwarg only) Amount that each ``numbers`` can be greater/smaller than ``compare`` before
+    :param Decimal|int|float|str compare: The base number which all ``numbers`` will be compared against.
+    :param Decimal|int|float|str numbers: One or more numbers to compare against ``compare``
+    :param Decimal|int|float|str tolerance: (kwarg only) Amount that each ``numbers`` can be greater/smaller than ``compare`` before
                                         returning ``False``.
     :keyword bool fail: (default: ``False``) If true, will raise :class:`.AssertionError` on failed tolerance check, instead of
                         returning ``False``. (mutually exclusive with ``assert``)
@@ -1076,13 +1297,13 @@ IS_XKWARGS = re.compile('^\*\*([a-zA-Z0-9_])+$')
 """Pre-compiled regex for matching catch-all keyword argument parameter names like ``**args``"""
 T_PARAM = inspect.Parameter
 """Type alias for :class:`inspect.Parameter`"""
-T_PARAM_LIST = Union[Dict[str, T_PARAM], List[T_PARAM], Iterable[T_PARAM]]
+T_PARAM_LIST = Union[Dict[str, T_PARAM], Mapping[str, T_PARAM], List[T_PARAM], Iterable[T_PARAM]]
 """
 Type alias for dict's containing strings mapped to :class:`inspect.Parameter`'s, lists of just
 :class:`inspect.Parameter`'s, and any iterable of :class:`inspect.Parameter`
 """
 
-# noinspection PyProtectedMember
+# noinspection PyProtectedMember,PyUnresolvedReferences
 INS_EMPTY = inspect._empty
 """
 Type alias for :class:`inspect.empty`
@@ -1133,8 +1354,6 @@ def _filter_params(params: T_PARAM_LIST, ignore_xargs=False, ignore_xkwargs=Fals
     """
     ignore_defaults = kwargs.pop('ignore_defaults', False)
     ignore_positional = kwargs.pop('ignore_positional', False)
-    
-
     
     _params = params
     if isinstance(params, (dict, OrderedDict)) or hasattr(params, 'values'):
