@@ -24,9 +24,9 @@ K = TypeVar('K')
 """Plain generic type variable for use in helper functions"""
 V = TypeVar('V')
 """Plain generic type variable for use in helper functions"""
-C = TypeVar('C', type, callable, Callable)
+C = TypeVar('C', type, Callable)
 """Generic type variable constrained to :class:`type` / :class:`typing.Callable` for use in helper functions"""
-CL = TypeVar('CL', type, callable, Callable)
+CL = TypeVar('CL', type, Callable)
 """Generic type variable constrained to :class:`type` / :class:`typing.Callable` for use in helper functions"""
 
 
@@ -59,3 +59,10 @@ and exceptions aren't suitable::
 
 STRBYTES = Union[bytes, str]
 """Shorter alias for ``Union[bytes, str]``"""
+
+AUTO = AUTOMATIC = AUTO_DETECTED = type('AutoDetected', (), {})
+"""
+Another functionless type, intended to stand-in as the default value for a parameter, with the
+meaning "automatically populate this parameter from another source" e.g. instance state attributes
+"""
+

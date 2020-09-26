@@ -1,5 +1,108 @@
 -----------------------------------------------------------------------------------------------------------------------
 
+3.0.0 - Overhauled net module, new object cleaner for easier serialisation, improved class generation/mocking + more
+====================================================================================================================
+
+-----------------------------------------------------------------------------------------------------------------------
+
+- `privex.helpers.common`
+    - Added `strip_null` - very simple helper function to strip both `\00` and white space
+      from a string - with 2 cycles for good measure.
+
+- `privex.helpers.types`
+    - Added `AUTO` / `AUTOMATIC` / `AUTO_DETECTED` dummy type, for use as the default value
+      of function/method parameters, signalling to users that a parameter is auto-populated
+      from another data source (e.g. instance/class attribute) if not specified.
+
+- `privex.helpers.collections`
+    - Added `copy_class_simple` (alternative to `copy_class`)
+    - Added `copy_func` for copying functions, methods, and classmethods
+    - Improved `_q_copy` to handle copying functions, methods and classmethods
+    - Added `generate_class` + `generate_class_kw`
+    - Added `Mocker.make_mock_module`
+    - Added `Mocker.add_mock_modules`
+    - Added `Mocker.__dir__` to track the available mock attributes and modules
+    - Added `dataclasses_mock` - a `Mocker` instance which emulates `dataclasses` as a drop-in
+      partially functional dummy for Python 3.6 when the `dataclasses` backport package isn't installed. 
+    - Various changes to `Mocker.make_mock_class` - potentially breaking, see
+      the **BREAKING CHANGES** section.
+    - Added `DictObject.__dir__` + `OrderedDictObject.__dir__` to enable proper tracking of dictionary keys as attributes
+
+- `privex.helpers.net`
+    - This module has now been converted into a folder-based module. Imports in `__init__.py` have been carefully
+      setup to ensure that existing import statements should still work as normal
+    - Added new `SocketWrapper` and `AsyncSocketWrapper` classes, which are powerful wrapper classes for working with
+      Python `socket.socket` objects, including support for SSL/TLS, partial support for running socket servers, and\
+      making basic HTTP requests
+    - **Many, many new functions and classes!** There's too many to list, and due to the conversion into a module folder
+      instead of a singular file, it's difficult to track which functions/classes are new, and which existed before.
+      
+      If you really want to know what's new, just take a look around the `privex/helpers/net` module.
+
+- `privex.helpers.converters`
+    - Added `clean_obj` - which is a function that recursively "cleans" any arbitrary object, as to make it safe to convert
+      into JSON and other common serialisation formats. It supports `dict`'s, `list`'s, [attrs](https://attrs.org)
+      objects, native Python `dataclass`'s, `Decimal`, and many other types of objects.
+    - Added `clean_dict` (used by `clean_obj`, usually no need to call it directly)
+    - Added `clean_list` (used by `clean_obj`, usually no need to call it directly)
+
+- Added `privex.helpers.mockers` module, which contains pre-made `Mocker` objects that are designed to stand-in
+  for certain libraries / classes as partially functional dummies, if the real module(s) are unavailable for whatever reason.
+ 
+- **And probably some other small additions / changes**
+
+
+**BREAKING CHANGES**
+
+- Both `_copy_class_dict` and `_copy_class_slotted` now check each attribute name
+  against a blacklist (default: `COPY_CLASS_BLACKLIST`), and the default blacklist
+  contains `__dict__`, `__slots__` and `__weakref__`, as the first 2 can't be directly
+  copied (but we copy their contents by iteration), and weakref simply can't be deep copied
+  (and it probably isn't a good idea to copy it anyway).
+- `_copy_class_dict` (used by `copy_class`) no longer breaks the attribute copy loop if `deep_copy=False`
+ 
+- `Mocker.make_mock_class` now returns a cloned `Mocker` class or instance by default, instead of
+  a barebones class / instance of a barebones class.
+  
+  This was done simply because a Mocker class/instance is designed to handle being
+  instantiated with any combination of constructor arguments, and have arbitrary
+  attributes be retrieved / methods called without raising errors.
+  
+  If you absolutely require a plain, simple, empty class to be generated, you may
+  pass the parameter `simple=True` to generate a bare class instead of a clone of Mocker
+  (similar to the old behaviour). Unlike the old version of this method, you can now specify attributes
+  as a dictionary to make your barebones mock class act similar to the class it's mocking. 
+
+- Many things in `privex.helpers.net` such as `check_host` / `check_host_async` have been improved in various ways, however
+  there may be some breaking changes with certain `privex.helpers.net` functions/classes in certain usecases.
+    - Due to the high risk of bugs with certain networking functions that have been completely revamped, the
+      older, simpler versions of various networking functions are available under `privex.helpers.net.base`
+      with their original names.
+      
+      Because of the naming conflicts, to use the legacy functions/classes from `base`, you must import them
+      directly from `privex.helpers.net.base` like so:
+      
+      ```
+      # Option 1: import the base module itself, with an alias to prevent naming conflicts (and make it more
+      # clear what you're referencing)
+      from privex.helpers.net import base as netbase
+      if netbase.check_host('google.com', 80):
+          print('google.com is up')
+      # Option 2: import the required legacy functions directly (optionally, you can alias them as needed)
+      # You could also alias the newer overhauled functions while testing them in small portions
+      # of your application.
+      from privex.helpers.net.base import check_host
+      from privex.helpers.net import check_host as new_check_host
+      
+      if check_host('www.privex.io', 443, http_test=True, use_ssl=True):
+          print('[old check_host] https://www.privex.io is up')
+      if new_check_host('files.privex.io', 443, http_test=True, use_ssl=True):
+          print('[new check_host] https://files.privex.io is up')
+      ```
+
+
+-----------------------------------------------------------------------------------------------------------------------
+
 2.8.0 - Refactoring, bug fixes + new loop_run function
 ===============================================================================================
 

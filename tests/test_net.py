@@ -4,9 +4,11 @@ Test cases related to :py:mod:`privex.helpers.net` or generally network related 
 import socket
 import warnings
 
-from privex.helpers import loop_run
+from privex.helpers import loop_run, settings
 from tests import PrivexBaseCase
 from privex import helpers
+from privex.helpers import run_coro_thread
+from privex.helpers.net import base as netbase
 
 try:
     import pytest
@@ -14,10 +16,7 @@ try:
     HAS_PYTEST = True
 except ImportError:
     warnings.warn('WARNING: Could not import pytest. You should run "pip3 install pytest" to ensure tests work best')
-    pytest = helpers.Mocker.make_mock_class('module')
-    pytest.skip = lambda msg, allow_module_level=True: warnings.warn(msg)
-    pytest.add_mock_module('mark')
-    pytest.mark.skip, pytest.mark.skipif = helpers.mock_decorator, helpers.mock_decorator
+    from privex.helpers.mockers import pytest
     HAS_PYTEST = False
 
 HAS_DNSPYTHON = helpers.plugin.HAS_DNSPYTHON
@@ -26,6 +25,13 @@ HAS_DNSPYTHON = helpers.plugin.HAS_DNSPYTHON
 class TestNet(PrivexBaseCase):
     """Test cases related to :py:mod:`privex.helpers.net` or generally network related functions"""
 
+    def __init__(self, *args, **kwargs):
+        settings.CHECK_CONNECTIVITY = False
+        settings.DEFAULT_SOCKET_TIMEOUT = 5
+        settings.DEFAULT_READ_TIMEOUT = 7
+        settings.DEFAULT_WRITE_TIMEOUT = 3
+        super().__init__(*args, **kwargs)
+    
     def test_ping(self):
         """Test success & failure cases for ping function with IPv4, as well as input validation"""
         try:
@@ -137,6 +143,14 @@ class TestNet(PrivexBaseCase):
         http_req = b"GET / HTTP/1.1\n\n"
         self.assertTrue(helpers.check_host('files.privex.io', 80, send=http_req))
         self.assertFalse(helpers.check_host('files.privex.io', 9991))
+
+    @pytest.mark.xfail()
+    def test_check_host_http(self):
+        self.assertTrue(helpers.check_host_http('files.privex.io', 80))
+
+    @pytest.mark.xfail()
+    def test_check_host_http_ssl(self):
+        self.assertTrue(helpers.check_host_http('www.privex.io', 443, use_ssl=True))
 
     @pytest.mark.xfail()
     def test_check_host_throw(self):
@@ -397,6 +411,13 @@ class TestAsyncResolveIP(PrivexBaseCase):
 
 
 class TestAsyncNet(PrivexBaseCase):
+    def __init__(self, *args, **kwargs):
+        settings.CHECK_CONNECTIVITY = False
+        settings.DEFAULT_SOCKET_TIMEOUT = 5
+        settings.DEFAULT_READ_TIMEOUT = 7
+        settings.DEFAULT_WRITE_TIMEOUT = 3
+        super().__init__(*args, **kwargs)
+    
     def test_get_rdns_privex_ns1_ip(self):
         """Test resolving IPv4 and IPv6 addresses into ns1.privex.io"""
         self.assertEqual(loop_run(helpers.get_rdns_async('2a07:e00::100')), 'ns1.privex.io')
@@ -418,19 +439,42 @@ class TestAsyncNet(PrivexBaseCase):
             loop_run(helpers.get_rdns_async('192.168.5.1'))
 
     @pytest.mark.xfail()
+    def test_base_check_host_async(self):
+        self.assertTrue(loop_run(netbase.check_host_async, 'hiveseed-se.privex.io', 2001))
+        self.assertFalse(loop_run(netbase.check_host_async, 'hiveseed-se.privex.io', 9991))
+
+    @pytest.mark.xfail()
+    def test_base_check_host_async_send(self):
+        http_req = b"GET / HTTP/1.1\n\n"
+        self.assertTrue(loop_run(netbase.check_host_async, 'files.privex.io', 80, send=http_req))
+        self.assertFalse(loop_run(netbase.check_host_async, 'files.privex.io', 9991))
+
+    @pytest.mark.xfail()
+    def test_base_check_host_async_throw(self):
+        with self.assertRaises(ConnectionRefusedError):
+            loop_run(netbase.check_host_async, 'files.privex.io', 9991, throw=True)
+
+    @pytest.mark.xfail()
     def test_check_host_async(self):
-        self.assertTrue(loop_run(helpers.check_host_async('hiveseed-se.privex.io', 2001)))
-        self.assertFalse(loop_run(helpers.check_host_async('hiveseed-se.privex.io', 9991)))
+        self.assertTrue(run_coro_thread(helpers.check_host_async, 'hiveseed-se.privex.io', 2015, throw=True))
+        self.assertFalse(run_coro_thread(helpers.check_host_async, 'hiveseed-se.privex.io', 9991, timeout=2))
 
     @pytest.mark.xfail()
     def test_check_host_async_send(self):
         http_req = b"GET / HTTP/1.1\n\n"
-        self.assertTrue(loop_run(helpers.check_host_async('files.privex.io', 80, send=http_req)))
-        self.assertFalse(loop_run(helpers.check_host_async('files.privex.io', 9991)))
+        self.assertTrue(run_coro_thread(helpers.check_host_async, 'files.privex.io', 80, send=http_req))
+        self.assertFalse(run_coro_thread(helpers.check_host_async, 'files.privex.io', 9991, timeout=2))
+
+    @pytest.mark.xfail()
+    def test_check_host_async_http(self):
+        self.assertTrue(run_coro_thread(helpers.check_host_http_async, 'files.privex.io', 80))
+
+    @pytest.mark.xfail()
+    def test_check_host_async_http_ssl(self):
+        self.assertTrue(run_coro_thread(helpers.check_host_http_async, 'www.privex.io', 443, use_ssl=True))
 
     @pytest.mark.xfail()
     def test_check_host_async_throw(self):
         with self.assertRaises(ConnectionRefusedError):
-            loop_run(helpers.check_host_async('files.privex.io', 9991, throw=True))
-
+            run_coro_thread(helpers.check_host_async, 'files.privex.io', 9991, timeout=5, throw=True)
 

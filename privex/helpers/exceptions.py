@@ -170,3 +170,7 @@ class EventWaitTimeout(PrivexException):
     Raised when a timeout has been reached while waiting for an event (:class:`threading.Event`) to be signalled.
     """
 
+
+class ValidatorNotMatched(PrivexException):
+    pass
+

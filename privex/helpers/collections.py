@@ -190,17 +190,370 @@ with ``dictable_namedtuple``)
 
 """
 import copy
+import functools
 import inspect
+import os
 import sys
+import types
+from os.path import dirname, abspath
 from collections import namedtuple, OrderedDict
 from json import JSONDecodeError
 from types import MemberDescriptorType
-from typing import Dict, Optional, NamedTuple, Union, Type, List, Generator, Iterable, TypeVar
-from privex.helpers.types import T, K
+from typing import Any, Callable, Dict, Optional, NamedTuple, Union, Type, List, Generator, Iterable, TypeVar
+
+# from privex.helpers.decorators import mock_decorator
+
+from privex.helpers.types import AUTO, T, K
 import logging
 import warnings
 
 log = logging.getLogger(__name__)
+
+
+def _mock_decorator(*dec_args, **dec_kwargs):
+    def _decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            return f(*args, **kwargs)
+        return wrapper
+    return _decorator
+
+
+def generate_class(
+        name: str, qualname: str = None, module: str = None, bases: Union[tuple, list] = None,
+        attributes: Dict[str, Any] = None, **kwargs
+) -> Any:
+    """
+    A small helper function for dynamically generating classes / types.
+
+    **Basic usage**
+
+    Generating a simple class, with an instance constructor, a basic instance method, and an instance factory classmethod::
+
+        >>> import random
+        >>> from privex.helpers.collections import generate_class
+        >>> def hello_init(self, example: int):
+        ...     self.example = example
+        ...
+        >>> Hello = generate_class(
+        ...     'Hello', module='hello',
+        ...     attributes=dict(
+        ...         __init__=hello_init, lorem=lambda self: self.example * 10,
+        ...         make_hello=classmethod(lambda cls: cls(random.randint(1, 100)))
+        ...     )
+        ... )
+        ...
+        >>> h = Hello(123)
+        >>> h.lorem()
+        1230
+        >>> j = Hello.make_hello()
+        >>> j.example
+        77
+        >>> j.lorem()
+        770
+
+    Generating a child class which inherits from an existing class (the parent(s) can also be a generated classes)::
+
+        >>> World = generate_class(
+        ...     'World', module='hello', bases=(Hello,), attributes=dict(ipsum=lambda self: float(self.example) / 3)
+        ... )
+        >>> w = World(130)
+        >>> w.lorem()
+        1300
+        >>> w.ipsum()
+        43.333333333333336
+
+    :param str name:         The name of the class, e.g. ``Hello``
+    :param str qualname:     (Optional) The qualified name of the class, e.g. for nested classes ``A -> B -> C``, class ``C``
+                             would have the ``__name__``: ``C`` and ``__qualname__``: ``A.B.C``
+    :param str module:       (Optional) The module the class should appear to belong to (sets ``__module__``)
+    :param tuple|list bases: (Optional) A tuple or list of "base" / "parent" classes for inheritance.
+    :param dict attributes:  (Optional) A dictionary of attributes to add to the class. (can include constructor + methods)
+    :param kwargs:
+    :return:
+    """
+    qualname = name if qualname is None else qualname
+    bases = (object,) if bases is None else (tuple(bases) if not isinstance(bases, tuple) else bases)
+    attributes = {} if attributes is None else attributes
+    attributes['__module__'] = attributes.get('__module__', module)
+    # kwargs = dict(kwargs)
+    
+    x = type(name, bases, attributes)
+    x.__name__ = name
+    x.__qualname__ = qualname
+    x.__module__ = module
+    
+    return x
+
+
+def generate_class_kw(name: str, qualname: str = None, module: str = None, bases: Union[tuple, list] = None, **kwargs) -> Type:
+    """
+    Same as :func:`.generate_class`, but instead of a :class:`dict` ``attributes`` parameter - all additional keyword arguments
+    will be used for ``attributes``
+
+    **Example**::
+
+        >>> def lorem_init(self, ipsum=None):
+        ...     self._ipsum = ipsum
+        ...
+        >>> Lorem = generate_class_kw('Lorem',
+        ...     __init__=lorem_init, hello=staticmethod(lambda: 'world'),
+        ...     ipsum=property(lambda self: 0 if self._ipsum is None else self._ipsum)
+        ... )
+        >>> l = Lorem()
+        >>> l.ipsum()
+        0
+        >>> l.hello()
+        'world'
+
+    """
+    return generate_class(name, qualname, module, bases, attributes=dict(kwargs))
+
+
+def copy_func(f: Callable, rewrap_classmethod=True, name=None, qualname=None, module=AUTO, **kwargs) -> Union[Callable, classmethod]:
+    """Based on http://stackoverflow.com/a/6528148/190597 (Glenn Maynard)"""
+    if isinstance(f, classmethod):
+        fn = copy_func(f.__func__)
+        return classmethod(fn) if rewrap_classmethod else fn
+    g = types.FunctionType(f.__code__, f.__globals__, name=name if name is not None else f.__name__,
+                           argdefs=f.__defaults__,
+                           closure=f.__closure__)
+    g = functools.update_wrapper(g, f)
+    g.__kwdefaults__ = f.__kwdefaults__
+    g.__qualname__ = g.__name__ if qualname is None else qualname
+    g.__module__ = getattr(f, '__module__') if module is AUTO else module
+    return g
+
+
+def _q_copy(obj: K, key: str = None, deep_private: bool = False, quiet: bool = False, fail: bool = False, **kwargs) -> K:
+    should_copy = kwargs.pop('should_copy', True)
+    if not should_copy:
+        log.debug("Not copying object '%s' (key '%s') as should_copy is False", repr(obj), key)
+        return obj
+    # By default, deep_private is false, which means we avoid deep copying any attributes which have keys starting with __
+    # This is because they're usually objects/types we simply can't deepcopy without issues.
+    if not deep_private and key is not None and key.startswith('__'):
+        log.debug("Not deep copying key '%s' as deep_private is true and key begins with __", key)
+        return obj
+    use_copy_func = kwargs.get('use_copy_func', True)
+    try:
+        if use_copy_func and any([inspect.isfunction(obj), inspect.ismethod(obj), isinstance(obj, classmethod)]):
+            copied = copy_func(obj)
+        else:
+            copied = copy.deepcopy(obj)
+        return copied
+    except Exception as ex:
+        if fail:
+            raise ex
+        log_args = "Exception while deep copying object %s ( %s ) - using normal ref. Ex: %s %s", key, obj, type(ex), str(ex)
+        if quiet:
+            log.debug(*log_args)
+        else:
+            log.warning(*log_args)
+    return obj
+
+
+COPY_CLASS_BLACKLIST = [
+    '__dict__', '__slots__', '__weakref__'
+]
+
+
+def _copy_class_dict(obj: Type[T], name, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
+    """
+    Internal function used by :func:`.copy_class`
+
+    Make a deep copy of the :class:`.type` / class ``obj`` (for standard classes, which use ``__dict__``)
+    """
+    orig_dict, filt_dict = dict(obj.__dict__), {}
+    attr_blacklist = kwargs.get('blacklist', COPY_CLASS_BLACKLIST)
+    # Try to deep copy each attribute's value from the original __dict__ in 'orig_dict' into 'filt_dict'.
+    # Attributes that are private (start with '__') will use standard references by default (if deep_private is False),
+    # along with any attributes that fail to be deep copied.
+    for k, v in orig_dict.items():
+        # if not deep_copy: break
+        if k in attr_blacklist: continue
+        filt_dict[k] = v if not deep_copy else _q_copy(v, key=k, deep_private=deep_private, **kwargs)
+    
+    bases = kwargs.get('bases', obj.__bases__ if kwargs.get('use_bases', True) else (object,))
+    return type(name, bases, filt_dict if deep_copy else orig_dict)
+
+
+def _copy_class_slotted(obj: Type[T], name, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
+    """
+    Internal function used by :func:`.copy_class`
+
+    Make a deep copy of the :class:`.type` / class ``obj`` (for slotted classes, i.e. those which use ``__slots__``)
+
+    Based on a StackOverflow answer by user ``nkpro``: https://stackoverflow.com/a/61823543/2648583
+    """
+    slots = obj.__slots__ if type(obj.__slots__) != str else (obj.__slots__,)
+    orig_dict, slotted_members = {}, {}
+    attr_blacklist = kwargs.get('blacklist', COPY_CLASS_BLACKLIST)
+
+    for k, v in obj.__dict__.items():
+        if k in attr_blacklist: continue
+        dcval = v if not deep_copy else _q_copy(v, k, deep_private=deep_private, **kwargs)
+        if k not in slots:
+            orig_dict[k] = dcval
+        elif type(v) != MemberDescriptorType:
+            slotted_members[k] = dcval
+    
+    bases = kwargs.get('bases', obj.__bases__ if kwargs.get('use_bases', True) else (object,))
+    new_obj = type(name, bases, orig_dict)
+    for k, v in slotted_members.items():
+        setattr(new_obj, k, v)
+    
+    return new_obj
+
+
+DEFAULT_ALLOWED_DUPE = [
+    '__annotations__', '__doc__', '__init__', '__getattr__', '__setattr__', '__len__', '__sizeof__',
+    '__getattribute__', '__getitem__', '__setitem__', '__delitem__', '__str__', '__repr__',
+    '__del__', '__delattr__', '__enter__', '__exit__', '__aenter__', '__aexit__',
+    '__next__', '__iter__', '__hash__', '__call__', '__dir__', '__get__', '__set__', '__contains__'
+    '__add__', '__sub__', '__mul__', '__floordiv__', '__div__', '__mod__', '__pow__',
+    '__eq__', '__ne__', '__lt__', '__gt__', '__le__', '__ge__', '__cmp__',
+    '__copy__', '__deepcopy__', '__getstate__', '__setstate__', '__new__',
+]
+
+
+#
+# class Asdf:
+#     def __
+
+def copy_class_simple(obj: Type[T], name=None, qualname=None, module=AUTO, allow_attrs: list = None, ban_attrs: list = None, **kwargs):
+    """
+    This is an alternative to :func:`.copy_class` which simply creates a blank class, then iterates over ``obj.__dict__``,
+    using :func:`setattr` to copy each attribute over to the cloned class.
+    
+    It uses :func:`._q_copy` to safely deep copy any attributes which are object references, and thus need their reference pointers
+    severed, to avoid edits to the copy affecting the original (and vice versa).
+    
+    
+    :param obj:          The class to duplicate
+    :param str name:     The class name to set on the duplicate. If left as ``None``, the duplicate will retain the original ``obj`` name.
+    :param str qualname:           The qualified class name to set on the duplicate.
+    :param Optional[str] module:   The module path to set on the duplicate, e.g. ``privex.helpers.common``
+    :param list allow_attrs: Optionally, you may specify additional private attributes (ones which start with ``__``) that
+                             are allowed to be copied from the original class to the duplicated class.
+    :param list ban_attrs:   Optionally, you may blacklist certain attributes from being copied from the original class to the duplicate.
+    
+                             Blacklisted attributes take priority over whitelisted attributes, so you may use this to cancel out
+                             any attributes in the default attribute whitelist :attr:`.DEFAULT_ALLOWED_DUPE` which you don't want
+                             to be copied to the duplicated class.
+    :param kwargs:
+    :keyword tuple|list bases: If specified, overrides the default inherited classes (``obj.__bases__``) which would be
+                               set on the duplicated class's ``__bases__``.
+    :return:
+    """
+    kwargs = dict(kwargs)
+
+    name = name if name is not None else obj.__name__
+    qualname = qualname if qualname is not None else name
+    module = module if module is not AUTO else obj.__module__
+    
+    mkr = generate_class(
+        name, qualname, module, bases=kwargs.pop('bases', getattr(obj, '__bases__')), attributes=kwargs.pop('dict_attrs', None)
+    )
+    allow_attrs = [] if allow_attrs is None else allow_attrs
+    ban_attrs = [] if ban_attrs is None else ban_attrs
+    allow_attrs += [d for d in DEFAULT_ALLOWED_DUPE if d not in allow_attrs]
+    
+    for k, v in obj.__dict__.items():
+        if k in ban_attrs or (k.startswith('__') and k not in allow_attrs): continue
+        try:
+            setattr(mkr, k, _q_copy(v, **kwargs))
+        except Exception:
+            log.exception(f"Failed to copy attribute {k} (value: {v}) to duplicated {obj.__name__} class.")
+    # if kwargs.get('bases') is not None:
+    #     bases = kwargs.pop('bases')
+    #     mkr.__bases__ = bases if isinstance(bases, tuple) else tuple(bases)
+    if kwargs.get('str_func') is not None:
+        str_func = kwargs.pop('str_func')
+        mkr.__str__ = (lambda self: str_func) if isinstance(str_func, str) else str_func
+
+    # mkr.__name__ = name if name is not None else obj.__name__
+    # mkr.__qualname__ = qualname if qualname is not None else mkr.__name__
+    # mkr.__module__ = module if module is not None else obj.__module__
+    return mkr
+
+
+def copy_class(obj: Type[T], name=None, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
+    """
+    Attempts to create a full copy of a :class:`.type` or class, severing most object pointers such as attributes containing a
+    :class:`.dict` / :class:`.list`, along with classes or instances of classes.
+
+    Example::
+
+        >>> class SomeClass:
+        >>>     example = 'lorem ipsum'
+        >>>     data = ['hello', 'world']
+        >>>     testing = 123
+        >>>
+        >>> from privex.helpers import copy_class
+        >>> OtherClass = copy_class(SomeClass, name='OtherClass')
+
+    If you then append to the :class:`.list` attribute ``data`` on both SomeClass and OtherClass - with a different item
+    appended to each class, you'll see that the added item was only added to ``data`` for that class, and not to the other class,
+    proving the original and the copy are independent from each other::
+
+        >>> SomeClass.data.append('lorem')
+        >>> OtherClass.data.append('ipsum')
+        >>> SomeClass.data
+        ['hello', 'world', 'lorem']
+        >>> OtherClass.data
+        ['hello', 'world', 'ipsum']
+
+
+    :param Type[T] obj: A :class:`.type` / class to attempt to duplicate, deep copying each individual object in the class, to
+                        avoid any object pointers shared between the original and the copy.
+    :param str|None name: The class name to use for the copy of ``obj``. If not specified, defaults to the original class name from ``obj``
+    :param bool deep_copy: (Default: ``True``) If True, uses :func:`copy.deepcopy` to deep copy each attribute in ``obj`` to the copy.
+                            If False, then standard references will be used, which may result in object pointers being copied.
+    :param bool deep_private: (Default: ``False``) If True, :func:`copy.deepcopy` will be used on "private" class attributes,
+                              i.e. ones that start with ``__``. If False, attributes starting with ``__`` will not be deep copied,
+                              only a standard assignment/reference will be used.
+    :param kwargs: Additional advanced settings (see ``keyword`` pydoc entries for this function)
+
+    :keyword bool use_bases: (Default: ``True``) If True, copy the inheritance (bases) from ``obj`` into the class copy.
+    :keyword bool quiet: (Default ``False``) If True, log deep copy errors as ``debug`` level (usually silent in production apps)
+                         instead of the louder ``warning``.
+    :keyword tuple bases: A :class:`.tuple` of classes to use as "bases" (inheritance) for the class copy. If not specified,
+                          copies ``__bases__`` from the original class.
+    :keyword str module: If specified, overrides the module ``__module__`` in the class copy with this string, instead of copying from
+                         the original class.
+    :return Type[T] obj_copy: A deep copy of the original ``obj``
+    """
+    # If no class name was passed as an attribute, then we copy the name from the original class.
+    if not name:
+        name = obj.__name__
+    
+    # Depending on whether 'obj' is a normal class using __dict__, or a slotted class using __slots__, we need to handle the
+    # deep copying of the class differently.
+    if hasattr(obj, '__slots__'):
+        new_obj = _copy_class_slotted(obj, name=name, deep_copy=deep_copy, deep_private=deep_private, **kwargs)
+    else:
+        new_obj = _copy_class_dict(obj, name=name, deep_copy=deep_copy, deep_private=deep_private, **kwargs)
+    
+    # Override the module path string if the user specified 'module' as a kwarg
+    module = kwargs.get('module')
+    if module is not None:
+        new_obj.__module__ = module
+    return new_obj
+
+
+def _create_mocker_copy(name=None, **kwargs) -> Union[type, Type["Mocker"]]:
+    kwargs['dict_attrs'] = kwargs.get('dict_attrs', {})
+    
+    def n(self): return self.__class__.__name__
+    def m(self): return self.__class__.__module__
+    
+    nm = copy_func(n, name='__name__', qualname=f"{name}.__name__", module=kwargs.get('module', AUTO))
+    # mm = copy_func(m, name='__module__', qualname=f"{name}.__module__", module=kwargs.get('module', AUTO))
+    kwargs['dict_attrs']['__name__'] = property(nm)
+    # kwargs['dict_attrs']['__module__'] = property(mm)
+    
+    return copy_class_simple(Mocker, name=name, **kwargs)
 
 
 class Mocker(object):
@@ -299,15 +652,42 @@ class Mocker(object):
 
 
     """
+    # _ALLOWED_DUPE = [
+    #     '__module__', '__annotations__', '__doc__', '__init__', '__getattr__', '__setattr__', '__getitem__',
+    #     '__setitem__'
+    # ]
     mock_modules: dict
     mock_attrs: dict
     
-    def __init__(self, modules: dict = None, attributes: dict = None):
+    def __init__(self, modules: dict = None, attributes: dict = None, *args, **kwargs):
         self.mock_attrs = {} if attributes is None else attributes
         self.mock_modules = {} if modules is None else modules
     
     @classmethod
-    def make_mock_class(cls, name='Mocker', instance=True, **kwargs):
+    def make_mock_module(cls, mod_name: str, attributes: dict = None, modules: dict = None, built_in=False, **kwargs):
+        mod_base = kwargs.pop('module_base', _module_dir() if built_in else dirname(dirname(dirname(abspath(__file__)))))
+        mod_file = os.path.join(mod_base, kwargs.pop('module_file', os.path.join(*mod_name.split('.'), '__init__.py')))
+        fix_funcs = kwargs.get('fix_funcs', True)
+        
+        attributes = {} if not attributes else attributes
+        
+        if fix_funcs:
+            for k, v in attributes.items():
+                if inspect.isfunction(v) or inspect.ismethod(v):
+                    v.__module__ = mod_name
+        modrep = f"<module '{mod_name}' from '{mod_file}'>"
+        def x(self): return modrep
+        
+        # copy_func(x, name='__str__', qualname='__str__', module=mod_name)
+        attributes['__repr__'] = attributes.get('__repr__', copy_func(x, name='__repr__', qualname='__repr__', module=mod_name))
+        attributes['__str__'] = attributes.get('__str__', copy_func(x, name='__str__', qualname='__str__', module=mod_name))
+        attributes['__file__'] = attributes.get('__file__', mod_file)
+        return cls.make_mock_class('module', attributes=attributes, modules=modules, **kwargs)
+
+    @classmethod
+    def make_mock_class(
+        cls, name='Mocker', instance=True, simple=False, attributes: dict = None, modules: dict = None, **kwargs
+    ) -> Union[Any, "Mocker", Type["Mocker"]]:
         """
         Return a customized mock class or create an instance which appears to be named ``name``
 
@@ -339,8 +719,17 @@ class Mocker(object):
         :param name: The name to write onto the mock class's ``__name__`` (and ``__qualname__`` if not specified)
         :param bool instance: If ``True`` then the disguised mock class will be returned as an instance. Otherwise
                               the raw class itself will be returned for you to instantiate yourself.
+        :param bool simple:   When ``True``, generates a very basic, new class - not based on :class:`.Mocker`, which contains
+                              the attributes/methods defined in the param ``attributes``.
         :param kwargs: All kwargs (other than ``qualname``) are forwarded to ``__init__`` of the disguised class
                        if ``instance`` is True.
+        :param dict attributes: If ``simple`` is True, then this dictionary of attributes is used to generate the class's
+                                attributes, methods, and/or constructor.
+                                If ``simple`` is False, and ``instance`` is True, these attributes are passed to the constructor
+                                of the :class:`.Mocker` clone that was generated.
+        :param dict modules: If ``simple`` is False, and ``instance`` is True, this dict of modules are passed to the constructor
+                                of the :class:`.Mocker` clone that was generated.
+        
         :key str qualname: Optionally specify the "qualified name" to insert into ``__qualname__``. If this isn't
                            specified, then ``name`` is used for qualname, which is fine for most cases anyway.
         :key str module: Optionally override the module namespace that the class is supposedly from. If not specified,
@@ -348,18 +737,26 @@ class Mocker(object):
         :return:
         """
         qualname = kwargs.pop('qualname', name)
+        mod_name = kwargs.pop('module', __name__)
+        attributes = {} if attributes is None else attributes
+        modules = {} if modules is None else modules
+        if simple:
+            c = generate_class(
+                name, qualname=qualname, module=mod_name, bases=kwargs.pop('bases', None), attributes=attributes
+            )
+            return c(**kwargs) if instance else c
+        c = _create_mocker_copy(name, deep_private=True, module=mod_name, qualname=qualname)
+
+        # OuterMocker.__name__ = name
         
-        class OuterMocker(cls):
-            pass
+        # if mod_name is not None:
+        #     OuterMocker.__module__ = kwargs['module']
+        str_func = attributes.pop('__str__', None)
+        repr_func = attributes.pop('__repr__', None)
+        if str_func is not None: c.__str__ = str_func
+        if repr_func is not None: c.__repr__ = repr_func
+        return c(modules=modules, attributes=attributes, **kwargs) if instance else c
         
-        OuterMocker.__name__ = name
-        OuterMocker.__qualname__ = qualname
-        
-        if 'module' in kwargs:
-            OuterMocker.__module__ = kwargs['module']
-        
-        return OuterMocker() if instance else OuterMocker
-    
     def add_mock_module(self, name: str, value=None, mock_attrs: dict = None, mock_modules: dict = None):
         """
         Add a fake sub-module to this Mocker instance.
@@ -385,18 +782,68 @@ class Mocker(object):
         
         self.mock_modules[name] = Mocker(modules=mock_modules, attributes=mock_attrs) if value is None else value
     
-    def __getattribute__(self, item):
+    def add_mock_modules(self, *module_list, _dict_to_attrs=True, _parse_dict=True, **module_map):
+        """
+        
+            >>> hello = Mocker.make_mock_class('Hello')
+            >>> hello.add_mock_modules(
+            ...     world={
+            ...         'lorem': 'ipsum',
+            ...         'dolor': 123,
+            ...     }
+            ... )
+        
+        :param module_list:
+        :param _parse_dict:
+        :param _dict_to_attrs:
+        :param module_map:
+        :return:
+        """
+        module_map = dict(module_map)
+        for m in module_list:
+            log.debug("Adding simple mock module from module_list: %s", m)
+            self.add_mock_module(m)
+        for k, v in module_map.items():
+            m_val, m_attrs, m_modules = v, {}, {}
+            if isinstance(v, dict):
+                if _parse_dict:
+                    _m_val = None
+                    if 'value' in v: _m_val = v['value']
+                    if 'attrs' in v:
+                        log.debug("Popping 'attrs' from kwarg '%s' value as attributes for module: %s", k, v)
+                        m_attrs = {**m_attrs, **v.pop('attrs')}
+                    if 'modules' in v:
+                        log.debug("Popping 'modules' from kwarg '%s' value as attributes for module: %s", k, v)
+                        m_modules = {**m_modules, **v.pop('modules')}
+                    if not _dict_to_attrs or not all([_m_val is None, m_attrs is None, m_modules is None]):
+                        log.debug("Setting module value to value of kwarg '%s': %s", k, v)
+                        m_val = _m_val if m_attrs is None and m_modules is None else None
+                if _dict_to_attrs:
+                    log.debug("Importing kwarg '%s' value as attributes for module: %s", k, v)
+                    m_attrs = {**m_attrs, **v}
+                    
+            self.add_mock_module(k, m_val, mock_attrs=m_attrs, mock_modules=m_modules)
+    
+    @classmethod
+    def _duplicate_cls(cls, name=None, qualname=None, module=None, **kwargs) -> Type["Mocker"]:
+        return _create_mocker_copy(name=name, qualname=qualname, module=module, **kwargs)
+    
+    def _duplicate_ins(self, name=None, qualname=None, module=None, **kwargs) -> "Mocker":
+        mkr = _create_mocker_copy(name=name, qualname=qualname, module=module, **kwargs)
+        return mkr(modules=self.mock_modules, attributes=self.mock_attrs)
+    
+    def __getattr__(self, item):
         try:
-            return super().__getattribute__(item)
+            return object.__getattribute__(self, item)
         except AttributeError:
             pass
         try:
-            if item in super().__getattribute__('mock_modules'):
+            if item in object.__getattribute__(self, 'mock_modules'):
                 return self.mock_modules[item]
         except AttributeError:
             pass
         try:
-            if item in super().__getattribute__('mock_attrs'):
+            if item in object.__getattribute__(self, 'mock_attrs'):
                 return self.mock_attrs[item]
         except AttributeError:
             pass
@@ -405,13 +852,13 @@ class Mocker(object):
     
     def __setattr__(self, key, value):
         if key in ['mock_attrs', 'mock_modules']:
-            return super().__setattr__(key, value)
-        m = super().__getattribute__('mock_attrs')
+            return object.__setattr__(self, key, value)
+        m = object.__getattribute__(self, 'mock_attrs')
         m[key] = value
     
     def __getitem__(self, item):
         try:
-            return self.__getattribute__(item)
+            return self.__getattr__(item)
         except AttributeError as ex:
             raise KeyError(str(ex))
     
@@ -425,6 +872,32 @@ class Mocker(object):
     def __name__(self):
         return self.__class__.__name__
 
+    def __dir__(self) -> Iterable[str]:
+        base_attrs = list(object.__dir__(self))
+        extra_attrs = list(self.mock_attrs.keys()) + list(self.mock_modules.keys())
+        return base_attrs + extra_attrs
+
+
+def _module_dir():
+    import collections
+    col_dir = dirname(abspath(collections.__file__))
+    return dirname(col_dir)
+    
+
+dataclasses_mock = Mocker.make_mock_module(
+    'dataclasses',
+    attributes=dict(
+        dataclass=_mock_decorator,
+        asdict=lambda obj, dict_factory=dict: dict_factory(obj),
+        astuple=lambda obj, tuple_factory=tuple: tuple_factory(obj),
+        is_dataclass=lambda obj: False,
+        field=lambda *args, **kwargs: kwargs.get('default', kwargs.get('default_factory', lambda: None)()),
+    ), built_in=True
+)
+"""
+This is a :class:`.Mocker` instance which somewhat emulates the Python 3.7+ :mod:`dataclasses` module,
+including the :func:`dataclasses.dataclass` decorator.
+"""
 
 try:
     # noinspection PyCompatibility
@@ -441,10 +914,10 @@ except (ImportError, ImportWarning, AttributeError, KeyError) as e:
     # To avoid a severe syntax error caused by the missing dataclass types, we generate a dummy dataclasses module, along with a
     # dummy dataclass and field class so that type annotations such as Type[dataclass] don't cause the module to throw a syntax error.
     # noinspection PyTypeHints
-    dataclasses = Mocker()
+    dataclasses = dataclasses_mock
     # noinspection PyTypeHints
-    dataclass = Mocker.make_mock_class(name='dataclass', instance=False)
-    field = Mocker.make_mock_class(name='field', instance=False)
+    dataclass = dataclasses.dataclass
+    field = dataclasses.field
 
 
 class DictObject(dict):
@@ -498,6 +971,9 @@ class DictObject(dict):
         except KeyError as ex:
             raise AttributeError(str(ex))
     
+    def __dir__(self) -> Iterable[str]:
+        return list(dict.__dir__(self)) + list(self.keys())
+        
 
 class OrderedDictObject(OrderedDict):
     """
@@ -522,6 +998,9 @@ class OrderedDictObject(OrderedDict):
         except KeyError as ex:
             raise AttributeError(str(ex))
 
+    def __dir__(self) -> Iterable[str]:
+        return list(OrderedDict.__dir__(self)) + list(self.keys())
+
 
 class MockDictObj(DictObject):
     """
@@ -539,135 +1018,6 @@ MockDictObj.__name__ = 'dict'
 MockDictObj.__qualname__ = 'dict'
 MockDictObj.__module__ = 'builtins'
 
-
-def _q_copy(obj: K, key: str = None, deep_private: bool = False, quiet: bool = False, fail: bool = False, **kwargs) -> K:
-    # By default, deep_private is false, which means we avoid deep copying any attributes which have keys starting with __
-    # This is because they're usually objects/types we simply can't deepcopy without issues.
-    if not deep_private and key.startswith('__'):
-        log.debug("Not deep copying key '%s' as deep_private is true and key begins with __", key)
-        return obj
-    
-    try:
-        copied = copy.deepcopy(obj)
-        return copied
-    except Exception as ex:
-        if fail:
-            raise ex
-        log_args = "Exception while deep copying object %s ( %s ) - using normal ref. Ex: %s %s", key, obj, type(ex), str(ex)
-        if quiet:
-            log.debug(*log_args)
-        else:
-            log.warning(*log_args)
-    return obj
-
-
-def _copy_class_dict(obj: Type[T], name, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
-    """
-    Internal function used by :func:`.copy_class`
-
-    Make a deep copy of the :class:`.type` / class ``obj`` (for standard classes, which use ``__dict__``)
-    """
-    orig_dict, filt_dict = dict(obj.__dict__), {}
-
-    # Try to deep copy each attribute's value from the original __dict__ in 'orig_dict' into 'filt_dict'.
-    # Attributes that are private (start with '__') will use standard references by default (if deep_private is False),
-    # along with any attributes that fail to be deep copied.
-    for k, v in orig_dict.items():
-        if not deep_copy: break
-        filt_dict[k] = _q_copy(v, key=k, deep_private=deep_private, **kwargs)
-    
-    bases = kwargs.get('bases', obj.__bases__ if kwargs.get('use_bases', True) else (object,))
-    return type(name, bases, filt_dict if deep_copy else orig_dict)
-
-
-def _copy_class_slotted(obj: Type[T], name, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
-    """
-    Internal function used by :func:`.copy_class`
-    
-    Make a deep copy of the :class:`.type` / class ``obj`` (for slotted classes, i.e. those which use ``__slots__``)
-    
-    Based on a StackOverflow answer by user ``nkpro``: https://stackoverflow.com/a/61823543/2648583
-    """
-    slots = obj.__slots__ if type(obj.__slots__) != str else (obj.__slots__,)
-    orig_dict, slotted_members = {}, {}
-    
-    for k, v in obj.__dict__.items():
-        dcval = v if not deep_copy else _q_copy(v, k, deep_private=deep_private, **kwargs)
-        if k not in slots:
-            orig_dict[k] = dcval
-        elif type(v) != MemberDescriptorType:
-            slotted_members[k] = dcval
-    
-    bases = kwargs.get('bases', obj.__bases__ if kwargs.get('use_bases', True) else (object,))
-    new_obj = type(name, bases, orig_dict)
-    for k, v in slotted_members.items():
-        setattr(new_obj, k, v)
-    
-    return new_obj
-
-
-def copy_class(obj: Type[T], name=None, deep_copy=True, deep_private=False, **kwargs) -> Union[Type[T], type]:
-    """
-    Attempts to create a full copy of a :class:`.type` or class, severing most object pointers such as attributes containing a
-    :class:`.dict` / :class:`.list`, along with classes or instances of classes.
-    
-    Example::
-    
-        >>> class SomeClass:
-        >>>     example = 'lorem ipsum'
-        >>>     data = ['hello', 'world']
-        >>>     testing = 123
-        >>>
-        >>> from privex.helpers import copy_class
-        >>> OtherClass = copy_class(SomeClass, name='OtherClass')
-    
-    If you then append to the :class:`.list` attribute ``data`` on both SomeClass and OtherClass - with a different item
-    appended to each class, you'll see that the added item was only added to ``data`` for that class, and not to the other class,
-    proving the original and the copy are independent from each other::
-    
-        >>> SomeClass.data.append('lorem')
-        >>> OtherClass.data.append('ipsum')
-        >>> SomeClass.data
-        ['hello', 'world', 'lorem']
-        >>> OtherClass.data
-        ['hello', 'world', 'ipsum']
-    
-    
-    :param Type[T] obj: A :class:`.type` / class to attempt to duplicate, deep copying each individual object in the class, to
-                        avoid any object pointers shared between the original and the copy.
-    :param str|None name: The class name to use for the copy of ``obj``. If not specified, defaults to the original class name from ``obj``
-    :param bool deep_copy: (Default: ``True``) If True, uses :func:`copy.deepcopy` to deep copy each attribute in ``obj`` to the copy.
-                            If False, then standard references will be used, which may result in object pointers being copied.
-    :param bool deep_private: (Default: ``False``) If True, :func:`copy.deepcopy` will be used on "private" class attributes,
-                              i.e. ones that start with ``__``. If False, attributes starting with ``__`` will not be deep copied,
-                              only a standard assignment/reference will be used.
-    :param kwargs: Additional advanced settings (see ``keyword`` pydoc entries for this function)
-    
-    :keyword bool use_bases: (Default: ``True``) If True, copy the inheritance (bases) from ``obj`` into the class copy.
-    :keyword bool quiet: (Default ``False``) If True, log deep copy errors as ``debug`` level (usually silent in production apps)
-                         instead of the louder ``warning``.
-    :keyword tuple bases: A :class:`.tuple` of classes to use as "bases" (inheritance) for the class copy. If not specified,
-                          copies ``__bases__`` from the original class.
-    :keyword str module: If specified, overrides the module ``__module__`` in the class copy with this string, instead of copying from
-                         the original class.
-    :return Type[T] obj_copy: A deep copy of the original ``obj``
-    """
-    # If no class name was passed as an attribute, then we copy the name from the original class.
-    if not name:
-        name = obj.__name__
-    
-    # Depending on whether 'obj' is a normal class using __dict__, or a slotted class using __slots__, we need to handle the
-    # deep copying of the class differently.
-    if hasattr(obj, '__slots__'):
-        new_obj = _copy_class_slotted(obj, name=name, deep_copy=deep_copy, deep_private=deep_private, **kwargs)
-    else:
-        new_obj = _copy_class_dict(obj, name=name, deep_copy=deep_copy, deep_private=deep_private, **kwargs)
-    
-    # Override the module path string if the user specified 'module' as a kwarg
-    module = kwargs.get('module')
-    if module is not None:
-        new_obj.__module__ = module
-    return new_obj
 
 
 def is_namedtuple(*objs) -> bool:

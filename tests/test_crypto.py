@@ -54,8 +54,7 @@ try:
     HAS_PYTEST = True
 except ImportError:
     warnings.warn('WARNING: Could not import pytest. You should run "pip3 install pytest" to ensure tests work best')
-    pytest = Mocker.make_mock_class('module')
-    pytest.skip = lambda msg, allow_module_level=True: warnings.warn(msg)
+    from privex.helpers.mockers import pytest
     HAS_PYTEST = False
 
 if plugin.HAS_CRYPTO:

@@ -50,10 +50,7 @@ try:
     HAS_PYTEST = True
 except ImportError:
     warnings.warn('WARNING: Could not import pytest. You should run "pip3 install pytest" to ensure tests work best')
-    pytest = helpers.Mocker.make_mock_class('module')
-    pytest.skip = lambda msg, allow_module_level=True: warnings.warn(msg)
-    pytest.add_mock_module('mark')
-    pytest.mark.skip, pytest.mark.skipif = helpers.mock_decorator, helpers.mock_decorator
+    from privex.helpers.mockers import pytest
     HAS_PYTEST = False
 
 HAS_REDIS = plugin.HAS_REDIS

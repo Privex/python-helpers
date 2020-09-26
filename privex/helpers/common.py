@@ -36,7 +36,7 @@ from collections import OrderedDict
 from decimal import Decimal, getcontext
 from os import getenv as env
 from subprocess import PIPE, STDOUT
-from typing import Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional, BinaryIO, Generator, Mapping
+from typing import Callable, Sequence, List, Union, Tuple, Type, Dict, Any, Iterable, Optional, BinaryIO, Generator, Mapping
 from privex.helpers import settings
 from privex.helpers.collections import DictObject, OrderedDictObject
 from privex.helpers.types import T, K, V, C, USE_ORIG_VAR, STRBYTES, NumberStr
@@ -1840,4 +1840,16 @@ class LayeredContext:
         return await self.aexit(exc_type, exc_val, exc_tb)
 
 
-
+def strip_null(value: Union[str, bytes], conv: Callable[[str], Union[str, bytes, T]] = stringify, nullc="\00") -> Union[str, bytes, T]:
+    """
+    Small convenience function which :func:`.stringify`'s ``value`` then strips it of whitespace and null bytes, with
+    two passes for good measure.
+    
+    :param str|bytes value: The value to clean whitespace/null bytes out of
+    :param callable conv:   (Default :func:`.stringify`) Optionally, you can override the casting function used after
+                            the stripping is completed
+    :param str nullc:       (Default: ``\00``) Null characters to remove
+    :return str|bytes|T cleaned: The cleaned up ``value``
+    """
+    value = stringify(value).strip().strip(nullc).strip().strip(nullc)
+    return conv(value)
