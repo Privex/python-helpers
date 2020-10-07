@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 
 __all__ = [
     'HAS_REDIS', 'HAS_ASYNC_REDIS', 'HAS_DNSPYTHON', 'HAS_CRYPTO', 'HAS_SETUPPY_BUMP',
-    'HAS_SETUPPY_COMMANDS', 'HAS_SETUPPY_COMMON'
+    'HAS_SETUPPY_COMMANDS', 'HAS_SETUPPY_COMMON', 'HAS_GEOIP', 'HAS_PRIVEX_DB', 'clean_threadstore'
 ]
 
 HAS_REDIS = False
@@ -72,6 +72,9 @@ HAS_SETUPPY_COMMANDS = False
 
 HAS_GEOIP = False
 """If :py:mod:`privex.helpers.geoip` was imported successfully, this will change to True"""
+
+HAS_PRIVEX_DB = None
+"""If the ``privex.db`` module was imported successfully, this will change to True."""
 
 __STORE = dict(threads={})
 """This ``dict`` is used to store initialised classes for connections to databases, APIs etc."""
@@ -610,3 +613,8 @@ try:
     HAS_GEOIP = True
 except ImportError:
     log.debug('%s failed to import "geoip2", GeoIP2 dependent helpers will be disabled.', __name__)
+
+
+
+
+

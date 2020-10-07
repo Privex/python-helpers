@@ -30,9 +30,11 @@ To override settings from your app::
 
 """
 import random
+import sys
 from datetime import datetime
 from os import getcwd, getenv as env
-from os.path import dirname, abspath, join, expanduser
+from os import path
+from os.path import basename, dirname, abspath, join, expanduser
 from typing import Optional
 
 BASE_DIR = dirname(dirname(dirname(abspath(__file__))))
@@ -194,3 +196,49 @@ DEFAULT_WRITE_TIMEOUT = _env_int('DEFAULT_WRITE_TIMEOUT', DEFAULT_READ_TIMEOUT)
 
 DEFAULT_READ_TIMEOUT = None if DEFAULT_READ_TIMEOUT == 0 else DEFAULT_READ_TIMEOUT
 DEFAULT_WRITE_TIMEOUT = None if DEFAULT_WRITE_TIMEOUT == 0 else DEFAULT_WRITE_TIMEOUT
+
+
+def _bdir_plus_fname(f, sep='-', rem_ext=True):
+    bpath, fname = path.split(f)
+    _, bname = path.split(bpath)
+    if rem_ext:
+        fname, _ = path.splitext(fname)
+    return f"{bname}{sep}{fname}"
+    
+
+SQLITE_APP_DB_NAME = env('SQLITE_APP_DB_NAME', _bdir_plus_fname(abspath(sys.argv[0])))
+"""
+This environment variable controls the default database file "name" portion for the SQLite3 database
+wrappers in :mod:`privex.helpers.cache.post_deps` (used by the sync and async sqlite3 cache adapters)
+
+If not set, it defaults to a combination of the **containing folder name** and the **base filename** of the currently
+executing script - with the file extension (e.g. ``.py``) removed if it's present.
+
+The folder name + base filename is retrieved from ``sys.argv[0]``. For example, if you ran an
+application / script via ``./some/app/example.py``, then this would default to: ``app-example``
+
+If you set this variable in your environment, for example, ``SQLITE_APP_DB_NAME=my_app`` would result in a default DB path
+which looks like::
+
+    /home/exampleuser/.privex_cache/my_app.sqlite3
+
+
+"""
+
+SQLITE_APP_DB_FOLDER = expanduser(env('SQLITE_APP_DB_FOLDER', '~/.privex_cache'))
+"""
+This environment variable controls the default base folder used to store database files for the SQLite3 database
+wrappers in :mod:`privex.helpers.cache.post_deps` (used by the sync and async sqlite3 cache adapters).
+
+The variable is only used if a user / application either doesn't specify a path to a DB file with the sync/async SQLite3
+cache adapters, or they specify a relative path ( e.g. ``my_app/cache/cache_db.sqlite3`` ).
+
+You may reference the current user's home directory (the user currently executing the python app/script that uses privex-helpers)
+simply by using the character ``~``. For example, on a standard Linux system, if the executing user was ``john``, and
+the ``SQLITE_APP_DB_FOLDER`` is set to ``~/.example``, then the folder would resolve to ``/home/john/.example``.
+
+If not set, it defaults to ``~/.privex_cache``, a hidden folder directly within the current user's home directory.
+
+This env var is used in conjunction with :attr:`.SQLITE_APP_DB_NAME` to produce a path to an SQLite3
+
+"""

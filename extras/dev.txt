@@ -2,3 +2,4 @@
 -r extras/django.txt
 -r extras/docs.txt
 -r extras/tests.txt
+-r extras/dev_general.txt

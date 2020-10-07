@@ -44,7 +44,7 @@ BASE_DIR = dirname(abspath(__file__))
 with open(join(BASE_DIR, "README.md"), "r") as fh:
     long_description = fh.read()
 
-extensions = ['full', 'cache', 'crypto', 'django', 'docs', 'dev', 'extras', 'geoip', 'net', 'tests', 'setuppy']
+extensions = ['full', 'cache', 'crypto', 'django', 'docs', 'dev', 'dev_general', 'extras', 'geoip', 'net', 'tests', 'setuppy']
 
 extra_commands = {}
 
@@ -76,7 +76,7 @@ setup(
     ],
     cmdclass=extra_commands,
     extras_require=extras_require(extensions),
-    packages=find_packages(exclude=['tests', 'tests.*', 'test.*']),
+    packages=find_packages(exclude=['tests', 'tests.*', 'test.*', 'privex.db', 'privex.db.*']),
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",

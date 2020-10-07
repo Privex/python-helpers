@@ -17,4 +17,6 @@ dist
 /dev_*.py
 /*.sqlite*
 /*.db
+/privex/db
+/out
 

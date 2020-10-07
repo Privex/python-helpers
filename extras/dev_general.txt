@@ -1,0 +1,5 @@
+# For generating stub files (.pyi) + some other helpful dev features
+mypy>=0.780
+
+# (IPython) Provides a much nicer Python REPL console, especially in PyCharm
+jupyter

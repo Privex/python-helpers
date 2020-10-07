@@ -231,6 +231,7 @@ import asyncio
 import logging
 from inspect import isclass
 
+from privex.helpers import plugin
 from privex.helpers.common import empty_if, LayeredContext
 from privex.helpers.asyncx import awaitable, await_if_needed, loop_run
 
@@ -239,6 +240,20 @@ log = logging.getLogger(__name__)
 from typing import Any, Optional, Union, Type, List
 from privex.helpers.cache.CacheAdapter import CacheAdapter
 from privex.helpers.cache.MemoryCache import MemoryCache
+
+
+if plugin.HAS_PRIVEX_DB in [True, None]:
+    try:
+        from privex.helpers.cache.SqliteCache import SqliteCache
+        plugin.HAS_PRIVEX_DB = True
+    except ImportError:
+        plugin.HAS_PRIVEX_DB = False
+        log.debug(
+            "[%s] Failed to import %s from %s (missing package 'privex-db' maybe?)", __name__, 'SqliteCache', f'{__name__}.SqliteCache'
+        )
+else:
+    log.debug("[%s] Not attempting to import %s from %s as plugin check var '%s' is False.",
+              __name__, 'SqliteCache', f'{__name__}.SqliteCache', 'HAS_PRIVEX_DB')
 
 try:
     from privex.helpers.cache.RedisCache import RedisCache

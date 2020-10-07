@@ -43,6 +43,7 @@ from time import sleep
 from privex import helpers
 from privex.helpers import r_cache, random_str, plugin, CacheAdapter
 from tests.base import PrivexBaseCase
+from privex.helpers.collections import Mocker
 
 try:
     import pytest
@@ -54,6 +55,15 @@ except ImportError:
     HAS_PYTEST = False
 
 HAS_REDIS = plugin.HAS_REDIS
+
+try:
+    from privex.helpers.cache import SqliteCache
+    HAS_SQLITE_CACHE = True
+except ImportError:
+    warnings.warn('WARNING: Could not import SqliteCache. You may need to run "pip3 install -U privex-db aiosqlite" to be able to '
+                  'run the SQLite3 cache tests...')
+    SqliteCache = Mocker.make_mock_class('SqliteCache')
+    HAS_SQLITE_CACHE = False
 
 
 class TestCacheDecoratorMemory(PrivexBaseCase):
@@ -230,4 +240,26 @@ class TestRedisCache(TestMemoryCache):
             warnings.warn(f'The package "redis" is not installed, skipping Redis dependent tests ({cls.__name__}).')
             return cls.tearDownClass()
         helpers.cache.adapter_set(helpers.RedisCache())
+        cls.cache = helpers.cached
+
+
+@pytest.mark.skipif(not HAS_SQLITE_CACHE, reason="TestSqliteCache requires package 'privex-db'")
+class TestSqliteCache(TestMemoryCache):
+    """
+    :class:`.SqliteCache` Test cases for caching related functions/classes in :py:mod:`privex.helpers.cache`
+
+    This is **simply a child class** for :class:`.TestMemoryCache` - but with an overridden :class:`.setUpClass`
+    to ensure the cache adapter is set to :class:`.SqliteCache` for this re-run.
+    """
+    
+    cache_keys: list
+    """A list of all cache keys used during the test case, so they can be removed by :py:meth:`.tearDown` once done."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set the current cache adapter to an instance of RedisCache() and make it available through ``self.cache``"""
+        if not plugin.HAS_REDIS:
+            warnings.warn(f'The package "redis" is not installed, skipping Redis dependent tests ({cls.__name__}).')
+            return cls.tearDownClass()
+        helpers.cache.adapter_set(SqliteCache('pvx-helpers-tests.sqlite3'))
         cls.cache = helpers.cached

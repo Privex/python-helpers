@@ -64,8 +64,9 @@ log = logging.getLogger(__name__)
 HAS_ASYNC_MEMORY = False
 HAS_ASYNC_REDIS = False
 HAS_ASYNC_MEMCACHED = False
+HAS_ASYNC_SQLITE = False
 
-__all__ = ['HAS_ASYNC_REDIS', 'HAS_ASYNC_MEMORY', 'HAS_ASYNC_MEMCACHED']
+__all__ = ['HAS_ASYNC_REDIS', 'HAS_ASYNC_MEMORY', 'HAS_ASYNC_MEMCACHED', 'HAS_ASYNC_SQLITE']
 
 try:
     from privex.helpers.cache.asyncx.base import AsyncCacheAdapter
@@ -101,4 +102,14 @@ try:
 except ImportError:
     log.debug("[%s] Failed to import %s from %s (missing package 'aioredis' maybe?)",
               __name__, 'AsyncMemcachedCache', f'{__name__}.AsyncMemcachedCache')
+
+try:
+    from privex.helpers.cache.asyncx.AsyncSqliteCache import AsyncSqliteCache
+    
+    HAS_ASYNC_SQLITE = True
+    __all__ += ['AsyncSqliteCache']
+except ImportError:
+    log.debug("[%s] Failed to import %s from %s (missing package 'privex-db' or 'aiosqlite' maybe?)",
+              __name__, 'AsyncSqliteCache', f'{__name__}.AsyncSqliteCache')
+
 

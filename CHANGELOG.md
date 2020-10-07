@@ -1,9 +1,67 @@
 -----------------------------------------------------------------------------------------------------------------------
 
+3.1.0 - Added SqliteCache + AsyncSqliteCache, plus minor fixes in privex.helpers.plugin
+====================================================================================================================
+
+-----------------------------------------------------------------------------------------------------------------------
+
+Author: Chris (Someguy123)
+Date:   Wed Oct 7 11:36 2020 +0000
+
+- **privex.helpers.cache**
+    - Added `SqliteCache` module, containing the synchronous cache adapter `SqliteCache` which uses an Sqlite3 database for
+      persistent cache storage without the need for any extra system service (unlike the memcached / redis adapters)
+
+    - Added `asyncx.AsyncSqliteCache` module, containing the AsyncIO cache adapter `AsyncSqliteCache`, which is simply an 
+      AsyncIO version of `SqliteCache` using the `aiosqlite` library.
+        - **NOTE:** Due to the file-based nature of SQLite3, combined with the fact write operations generally result in the
+          database being locked until the write is completed - use of the AsyncIO SQLite3 cache adapter only *slightly*
+          improves performance, due to the blocking single-user nature of SQLite3.
+
+    - Added `post_deps` module, short for **post-init dependencies**. This module contains functions and classes which are
+      known to have (or have a high risk of) recursive import conflicts - e.g. the new SQLite caching uses the `privex-db`
+      package, and the `privex-db` package imports various things from `privex.helpers` causing a recursive import issue if we
+      load `privex.db` within a class that's auto-loaded in an `__init__.py` file.
+
+      The nature of this module means that none of it's contents are auto-loaded / aliased using `__init__.py` module constructor 
+      files. This shouldn't be a problem for most people though, as the functions/classes etc. within the module are primarily
+      only useful for certain cache adapter classes, rather than intended for use by the users of `privex-helpers` 
+      (though there's nothing stopping you from importing things from `post_deps` in your own project).
+
+        - `sqlite_cache_set_dbfolder` and `sqlite_cache_set_dbname` are two module level functions that are intended for use
+          by users. These functions allow you to quickly override the `DEFAULT_DB_FOLDER` and/or `DEFAULT_DB_NAME` dynamically
+          for both SqliteCacheManager and AsyncSqliteCacheManager.
+        - `SqliteCacheResult` is a namedtuple that represents a row returned when querying the `pvcache` table within 
+          an SQLite cache database
+        - `_SQManagerBase` is a mix-in class used by both `SqliteCacheManager` and `AsyncSqliteCacheManager`, containing code 
+          which is used by both classes.
+        - `SqliteCacheManager` is a child class of `SqliteWrapper`, designed to provide easier interaction with an SQLite3 
+          cache database, including automatic creation of the database file, and the `pvcache` table within it. This class is
+          intended for use by `privex.helpers.cache.SqliteCache`
+        - `AsyncSqliteCacheManager` is a child class of `SqliteAsyncWrapper`, and is simply an AsyncIO 
+          version of `SqliteCacheManager`. This class is intended for use by `privex.helpers.cache.asyncx.AsyncSqliteCache`
+
+- **privex.helpers.plugins**
+    - Added `HAS_PRIVEX_DB` attribute, for tracking whether the `privex-db` library is available for use.
+    - Added `clean_threadstore` to `__all__` - seems I forgot to add it previously.
+
+- **privex.helpers.settings**
+    - Added `SQLITE_APP_DB_NAME` which can also be controlled via an env var of the same name - allowing you to adjust the
+      base of the default DB filename for the SQLite3 cache adapters.
+    - Added `SQLITE_APP_DB_FOLDER` (can also be controlled via env) - similar to the DB_NAME attribute, controls the 
+      default base folder used by the SQLite3 cache adapters.
+
+
+
+-----------------------------------------------------------------------------------------------------------------------
+
 3.0.0 - Overhauled net module, new object cleaner for easier serialisation, improved class generation/mocking + more
 ====================================================================================================================
 
 -----------------------------------------------------------------------------------------------------------------------
+
+Author: Chris (Someguy123)
+Date:   Sat Sep 26 04:29 2020 +0000
 
 - `privex.helpers.common`
     - Added `strip_null` - very simple helper function to strip both `\00` and white space
