@@ -125,19 +125,22 @@ class SqliteCacheManager(SqliteWrapper, _SQManagerBase):
 
     def insert_cache_key(self, name: str, value: Any, expires_secs: Number = None, expires_at: Union[Number, datetime] = None):
         expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)
-        log.debug("Inserting/updating cache key '%s' with expires_at = '%s' and value: %s", name, expires_at, value)
+        log.debug("Inserting cache key '%s' with expires_at = '%s' and value: %s", name, expires_at, value)
+        # return self.action(
+        #     "INSERT INTO pvcache (name, value, expires_at) VALUES (?, ?, ?) "
+        #     "ON CONFLICT(name) DO UPDATE SET value=?,expires_at=?;",
+        #     (name, value, expires_at, value, expires_at)
+        # )
         return self.action(
-            "INSERT INTO pvcache (name, value, expires_at) VALUES (?, ?, ?) "
-            "ON CONFLICT(name) DO "
-            "UPDATE SET value=?,expires_at=?;",
-            (name, value, expires_at, value, expires_at)
+            "INSERT INTO pvcache (name, value, expires_at) VALUES (?, ?, ?);",
+            (name, value, expires_at)
         )
     
     def update_cache_key(self, name: str, value: Any, expires_secs: Number = None, expires_at: Union[Number, datetime] = None):
-        # expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)
+        expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)
         log.debug("Updating cache key '%s' with expires_at = '%s' and value: %s", name, expires_at, value)
-        return self.insert_cache_key(name, value, expires_at=expires_at, expires_secs=expires_secs)
-        # return self.action("UPDATE pvcache SET value = ?, expires_at = ? WHERE name = ?;", (value, name, expires_at))
+        # return self.insert_cache_key(name, value, expires_at=expires_at, expires_secs=expires_secs)
+        return self.action("UPDATE pvcache SET value = ?, expires_at = ? WHERE name = ?;", (value, expires_at, name))
 
     def set_cache_key(self, name: str, value: Any, expires_secs: Number = None, expires_at: Union[Number, datetime] = None):
         # expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)
@@ -225,19 +228,24 @@ try:
     
         async def insert_cache_key(self, name: str, value: Any, expires_secs: Number = None, expires_at: Union[Number, datetime] = None):
             expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)
-            log.debug("Inserting/updating cache key '%s' with expires_at = '%s' and value: %s", name, expires_at, value)
+            log.debug("Inserting cache key '%s' with expires_at = '%s' and value: %s", name, expires_at, value)
+            # return await await_if_needed(self.action(
+            #     "INSERT INTO pvcache (name, value, expires_at) VALUES (?, ?, ?) "
+            #     "ON CONFLICT(name) DO UPDATE SET value=?,expires_at=?;",
+            #     (name, value, expires_at, value, expires_at)
+            # ))
             return await await_if_needed(self.action(
-                "INSERT INTO pvcache (name, value, expires_at) VALUES (?, ?, ?) "
-                "ON CONFLICT(name) DO "
-                "UPDATE SET value=?,expires_at=?;",
-                (name, value, expires_at, value, expires_at)
+                "INSERT INTO pvcache (name, value, expires_at) VALUES (?, ?, ?);",
+                (name, value, expires_at)
             ))
     
         async def update_cache_key(self, name: str, value: Any, expires_secs: Number = None, expires_at: Union[Number, datetime] = None):
-            # expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)
+            expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)
             log.debug("Updating cache key '%s' with expires_at = '%s' and value: %s", name, expires_at, value)
-            return await self.insert_cache_key(name, value, expires_at=expires_at, expires_secs=expires_secs)
-            # return self.action("UPDATE pvcache SET value = ?, expires_at = ? WHERE name = ?;", (value, name, expires_at))
+            # return await self.insert_cache_key(name, value, expires_at=expires_at, expires_secs=expires_secs)
+            return await await_if_needed(
+                self.action("UPDATE pvcache SET value = ?, expires_at = ? WHERE name = ?;", (value, expires_at, name))
+            )
     
         async def set_cache_key(self, name: str, value: T, expires_secs: Number = None, expires_at: Union[Number, datetime] = None) -> T:
             expires_at = self._calc_expires(expires_at=expires_at, expires_secs=expires_secs)

@@ -8,17 +8,17 @@ python:
   - "3.6"
   - "3.7"
   - "3.8"
+  - "3.9-dev"
   - "nightly"
 jobs:
   allow_failures:
     # Sometimes nightly builds are broken, or contain breaking changes that affect dependencies we have
     # no control over. Thus we don't want a failed nightly run to cause Travis to consider the build broken.
     - python: 'nightly'
+    - python: '3.9-dev'
 before_install:
-  - sudo apt remove -y sqlite3
-  - sudo apt-add-repository -y ppa:travis-ci/sqlite3
   - sudo apt-get update -qy
-  - sudo apt-get -y install sqlite3
+  - sudo apt-get install -qy sqlite3
   - sudo apt-get install -qy iputils-ping
   - "sudo rsync -avh 'rsync://files.privex.io/cdn/extras/GeoIP/*.mmdb' /usr/share/GeoIP/"
 install:
