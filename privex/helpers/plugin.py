@@ -45,8 +45,8 @@ from privex.helpers.exceptions import GeoIPDatabaseNotFound
 log = logging.getLogger(__name__)
 
 __all__ = [
-    'HAS_REDIS', 'HAS_ASYNC_REDIS', 'HAS_DNSPYTHON', 'HAS_CRYPTO', 'HAS_SETUPPY_BUMP',
-    'HAS_SETUPPY_COMMANDS', 'HAS_SETUPPY_COMMON', 'HAS_GEOIP', 'HAS_PRIVEX_DB', 'clean_threadstore'
+    'HAS_REDIS', 'HAS_ASYNC_REDIS', 'HAS_ASYNC_MEMCACHED', 'HAS_DNSPYTHON', 'HAS_CRYPTO', 'HAS_SETUPPY_BUMP',
+    'HAS_SETUPPY_COMMANDS', 'HAS_SETUPPY_COMMON', 'HAS_GEOIP', 'HAS_MEMCACHED', 'HAS_PRIVEX_DB', 'clean_threadstore'
 ]
 
 HAS_REDIS = False
@@ -55,6 +55,7 @@ HAS_REDIS = False
 HAS_ASYNC_REDIS = False
 """If the ``aioredis`` module was imported successfully, this will change to True."""
 
+HAS_ASYNC_MEMCACHED = False
 HAS_DNSPYTHON = False
 """If the ``dns.resolver`` module was imported successfully, this will change to True."""
 
@@ -72,6 +73,8 @@ HAS_SETUPPY_COMMANDS = False
 
 HAS_GEOIP = False
 """If :py:mod:`privex.helpers.geoip` was imported successfully, this will change to True"""
+
+HAS_MEMCACHED = False
 
 HAS_PRIVEX_DB = None
 """If the ``privex.db`` module was imported successfully, this will change to True."""
@@ -454,6 +457,88 @@ except ImportError:
     log.debug('%s failed to import "aiomcache", Async Memcached dependent helpers will be disabled.', __name__)
 except Exception as e:
     log.debug('%s failed to import "aiomcache", (unknown exception), Async Memcached dependent helpers '
+              'will be disabled. Exception: %s %s', __name__, type(e), str(e))
+
+try:
+    import pylibmc
+    
+    HAS_MEMCACHED = True
+    
+    
+    def connect_memcached(**rd_config) -> pylibmc.Client:
+        from privex.helpers.common import extract_settings
+        cf = extract_settings('MEMCACHED_', settings, merge_conf=dict(rd_config))
+        # If MEMCACHED_HOST isn't a list/tuple/set, then we need to make it into one, since pylibmc expects a LIST of servers.
+        # It also doesn't have an argument for a port, so we combine that with the host.
+        host, port = cf.pop('host', 'localhost'), cf.pop('port', 11211)
+        if isinstance(host, (list, tuple, set)):
+            fhost = host
+        else:
+            fhost = [f"{host}:{port}" if port != 11211 else host]
+        return pylibmc.Client(fhost,  **cf)
+    
+    
+    def get_memcached(new_connection=False, thread_id=None, **rd_config) -> pylibmc.Client:
+        """Get a synchronous Memcached connection object. Create one if it doesn't exist."""
+        from privex.helpers.common import empty_if, extract_settings
+        
+        if new_connection: return connect_memcached(**rd_config)
+        rd: Optional[pylibmc.Client] = _get_threadstore('memcached', thread_id=thread_id)
+        
+        if rd is None:
+            rd: pylibmc.Client = _set_threadstore('memcached', connect_memcached(**rd_config), thread_id=thread_id)
+        return rd
+    
+    
+    def close_memcached(thread_id=None, close_all=False) -> bool:
+        """
+        Close the global synchronous Memcached connection and delete the instance.
+
+        :param thread_id: Close and delete the Memcached instance for this thread ID, instead of the detected current thread
+        :param bool close_all: Close all synchronous Memcached instances for every thread ID, then purge their thread store keys.
+        :return bool deleted: ``True`` if an instance was found and deleted. ``False`` if there was no existing Memcached instance.
+        """
+        if close_all:
+            for t_id, rd in _get_all_threadstore('memcached'):
+                if rd is None:
+                    continue
+                log.debug("Closing memcached for thread ID %s", t_id)
+                rd: pylibmc.Client
+                try:
+                    rd.disconnect_all()
+                except Exception:
+                    log.exception("Exception while closing memcached for thread ID %s", t_id)
+            return clean_threadstore(name='memcached', clean_all=True)
+        
+        rd: Union[str, pylibmc.Client] = _get_threadstore('memcached', 'NOT_FOUND', thread_id=thread_id)
+        if rd != 'NOT_FOUND':
+            rd.disconnect_all()
+            clean_threadstore(thread_id=thread_id, name='memcached')
+            return True
+        return False
+    
+    
+    def reset_memcached(thread_id=None) -> pylibmc.Client:
+        """Close the global synchronous Memcached connection, delete the instance, then re-instantiate it"""
+        close_memcached(thread_id=thread_id)
+        return _set_threadstore('memcached', get_memcached(True, thread_id), thread_id=thread_id)
+    
+    
+    def configure_memcached(host=settings.MEMCACHED_HOST, port: int = settings.MEMCACHED_PORT, **kwargs) -> pylibmc.Client:
+        """Update global Memcached settings and re-instantiate the global Memcached instance with the new settings."""
+        thread_id = kwargs.get('thread_id', None)
+        settings.MEMCACHED_PORT = port
+        settings.MEMCACHED_HOST = host
+        return reset_memcached(thread_id=thread_id)
+    
+    
+    __all__ += ['get_memcached', 'reset_memcached', 'configure_memcached', 'close_memcached',
+                'connect_memcached']
+
+except ImportError:
+    log.debug('%s failed to import "pylibmc", Synchronous Memcached dependent helpers will be disabled.', __name__)
+except Exception as e:
+    log.debug('%s failed to import "pylibmc", (unknown exception), Synchronous Memcached dependent helpers '
               'will be disabled. Exception: %s %s', __name__, type(e), str(e))
 
 try:

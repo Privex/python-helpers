@@ -72,9 +72,21 @@ except ImportError:
     log.debug('privex.helpers __init__ failed to import "RedisCache", not loading RedisCache')
 
 try:
+    from privex.helpers.cache.MemcachedCache import MemcachedCache
+    
+    plugin.HAS_MEMCACHED = True
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "MemcachedCache", not loading MemcachedCache')
+
+try:
     from privex.helpers.cache.asyncx import *
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "cache.asyncx.*", not loading async cache adapters')
+
+try:
+    from privex.helpers.cache.extras import *
+except ImportError:
+    log.exception("[%s] Failed to import %s from %s (unknown error!)", __name__, '*', f'privex.helpers.cache.extras')
 
 try:
     from privex.helpers.asyncx import *
@@ -148,7 +160,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '3.1.0'
+VERSION = '3.2.0'
 
 
 

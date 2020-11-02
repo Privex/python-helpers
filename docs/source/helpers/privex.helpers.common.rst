@@ -30,6 +30,7 @@ Common/General Helpers
 
       _filter_params
       almost
+      auto_list
       byteify
       call_sys
       camel_to_snake
@@ -60,6 +61,7 @@ Common/General Helpers
       reverse_io
       shell_quote
       stringify
+      strip_null
       tail
       typing_to_base
    

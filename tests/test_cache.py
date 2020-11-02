@@ -38,12 +38,28 @@ Test cases for the cache decorator :py:func:`.r_cache` plus cache layers :class:
 
 
 """
+import time
 import warnings
 from time import sleep
+from typing import Any, Callable, Union
+
 from privex import helpers
 from privex.helpers import r_cache, random_str, plugin, CacheAdapter
+
+from privex.helpers.plugin import HAS_MEMCACHED
+
+from privex.helpers.common import empty_if
 from tests.base import PrivexBaseCase
 from privex.helpers.collections import Mocker
+
+try:
+    from privex.helpers.cache.extras import CacheManagerMixin, z_cache
+    HAS_CACHE_EXTRA = True
+except Exception as e:
+    HAS_CACHE_EXTRA = False
+    warnings.warn(f'WARNING: Could not import CacheManagerMixin and/or z_cache from privex.helpers.cache.extra - '
+                  f'possibly missing required packages? Error is: {type(e)} - {str(e)}')
+    CacheManagerMixin, z_cache = Mocker.make_mock_class('CacheManagerMixin'), Mocker.make_mock_class('z_cache')
 
 try:
     import pytest
@@ -58,12 +74,17 @@ HAS_REDIS = plugin.HAS_REDIS
 
 try:
     from privex.helpers.cache import SqliteCache
+
     HAS_SQLITE_CACHE = True
 except ImportError:
     warnings.warn('WARNING: Could not import SqliteCache. You may need to run "pip3 install -U privex-db aiosqlite" to be able to '
                   'run the SQLite3 cache tests...')
     SqliteCache = Mocker.make_mock_class('SqliteCache')
     HAS_SQLITE_CACHE = False
+
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class TestCacheDecoratorMemory(PrivexBaseCase):
@@ -243,6 +264,28 @@ class TestRedisCache(TestMemoryCache):
         cls.cache = helpers.cached
 
 
+@pytest.mark.skipif(not HAS_MEMCACHED, reason="TestMemcachedCache requires package 'pylibmc'")
+class TestMemcachedCache(TestMemoryCache):
+    """
+    :class:`.MemcachedCache` Test cases for caching related functions/classes in :py:mod:`privex.helpers.cache`
+
+    This is **simply a child class** for :class:`.TestMemoryCache` - but with an overridden :class:`.setUpClass`
+    to ensure the cache adapter is set to :class:`.MemcachedCache` for this re-run.
+    """
+    
+    cache_keys: list
+    """A list of all cache keys used during the test case, so they can be removed by :py:meth:`.tearDown` once done."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set the current cache adapter to an instance of RedisCache() and make it available through ``self.cache``"""
+        if not plugin.HAS_MEMCACHED:
+            warnings.warn(f'The package "pylibmc" is not installed, skipping Memcached dependent tests ({cls.__name__}).')
+            return cls.tearDownClass()
+        helpers.cache.adapter_set(helpers.MemcachedCache())
+        cls.cache = helpers.cached
+
+
 @pytest.mark.skipif(not HAS_SQLITE_CACHE, reason="TestSqliteCache requires package 'privex-db'")
 class TestSqliteCache(TestMemoryCache):
     """
@@ -263,3 +306,166 @@ class TestSqliteCache(TestMemoryCache):
             return cls.tearDownClass()
         helpers.cache.adapter_set(SqliteCache('pvx-helpers-tests.sqlite3'))
         cls.cache = helpers.cached
+
+
+class CacheManagerExample(CacheManagerMixin):
+    cache_prefix = 'example'
+    default_cache_time = 20
+    default_cache_key_time = 15
+    
+    default_sleep_multiplier = 1
+    sleep_multiplier = 0.5
+
+    @classmethod
+    @z_cache()
+    def testing(cls, hello: str = 'world', banana: str = 'testing'):
+        sm = cls.sleep_multiplier
+        log.debug(f"Fake sleep {sm} secs ({sm} secs / {sm * 2} secs)...")
+        sleep(sm)
+        log.debug(f"Fake sleep {sm} secs ({sm * 2} secs / {sm * 2} secs)...")
+        sleep(sm)
+        return f"Hello! You are: {hello} || Your banana is called: {banana}"
+
+    @classmethod
+    @z_cache(cache_key=lambda cls, hello='world', banana='testing': f"lorem:ipsum:{hello}:{banana}")
+    def lorem(cls, hello: str = 'world', banana: str = 'testing'):
+        sm = cls.sleep_multiplier
+        log.debug(f"(lorem) Fake sleep {sm / 2} secs ({sm / 2} secs / {sm} secs)...")
+        sleep(sm / 2)
+        log.debug(f"(lorem) Fake sleep {sm / 2} secs ({sm} secs / {sm} secs)...")
+        sleep(sm / 2)
+        return f"(lorem) Hello! You are: {hello} || Your banana is called: {banana}"
+    
+    @staticmethod
+    def set_sleep_time(secs: int = None):
+        CacheManagerExample.sleep_multiplier = float(empty_if(secs, CacheManagerExample.default_sleep_multiplier))
+
+
+XNUM = Union[int, float]
+XFUNC = Callable[[Any], Any]
+
+
+def _lorem_key(hello='world', banana='testing') -> str:
+    return f"{CacheManagerExample.cache_prefix}{CacheManagerExample.cache_sep}lorem:ipsum:{hello}:{banana}"
+
+
+cmst = CacheManagerExample.sleep_multiplier
+
+
+@pytest.mark.skipif(not HAS_CACHE_EXTRA, reason="TestCacheManager requires privex.helpers.cache.extra to be imported without errors...")
+class TestCacheManager(PrivexBaseCase):
+    _testing_fmt_str = 'Hello! You are: {} || Your banana is called: {}'
+    _lorem_fmt_str = f"(lorem) {_testing_fmt_str}"
+    _delta = 0.2
+    
+    def tearDown(self) -> None:
+        CacheManagerExample.clear_all_cache_keys()
+    
+    def time_trial(self, func: XFUNC, assert_time: XNUM, delta: XNUM, *args, **kwargs):
+        t_start = time.time()
+        res = func(*args, **kwargs)
+        t_end = time.time()
+        self.assertAlmostEqual(t_end - t_start, assert_time, delta=delta)
+        return res
+    
+    def _check_testing_method(self, func: XFUNC, assert_time: XNUM, delta: XNUM, *args, **kwargs):
+        fmt_str = 'Hello! You are: {} || Your banana is called: {}'
+        if str(func.__name__).endswith('lorem'): fmt_str = f"(lorem) {fmt_str}"
+        args, kwargs = list(args), dict(kwargs)
+        hello = args[0] if len(args) > 0 else kwargs.get('hello', 'world')
+        banana = args[1] if len(args) > 1 else kwargs.get('banana', 'testing')
+        res = self.time_trial(func, assert_time, delta, *args, **kwargs)
+        self.assertEqual(res, fmt_str.format(hello, banana))
+        return res
+
+    def test_z_cache_simple(self):
+        """Test :func:`.z_cache` by calling a wrapped classmethod twice, and comparing the times"""
+        self._check_testing_method(CacheManagerExample.testing, cmst * 2, self._delta)
+        self._check_testing_method(CacheManagerExample.testing, 0.2, self._delta)
+
+    def test_z_cache_simple_args(self):
+        """
+        Test :func:`.z_cache` by calling a wrapped classmethod with different arguments, to confirm argument changes result
+        in a different cache key
+        """
+        self._check_testing_method(CacheManagerExample.testing, cmst * 2, self._delta, 'example')
+        self._check_testing_method(CacheManagerExample.testing, 0.2, self._delta, 'example')
+
+        self._check_testing_method(CacheManagerExample.testing, cmst * 2, self._delta, 'example', 'two')
+        self._check_testing_method(CacheManagerExample.testing, 0.2, self._delta, 'example', 'two')
+
+        self._check_testing_method(CacheManagerExample.testing, cmst * 2, self._delta, hello='another', banana='example')
+        self._check_testing_method(CacheManagerExample.testing, 0.2, self._delta, hello='another', banana='example')
+
+        self._check_testing_method(CacheManagerExample.testing, cmst * 2, self._delta, 'and', banana='another')
+        self._check_testing_method(CacheManagerExample.testing, 0.2, self._delta, 'and', banana='another')
+        
+    def test_z_cache_lambda_key(self):
+        """Test :func:`.z_cache` by calling a wrapped classmethod twice (which uses a lambda cache_key), and comparing the times"""
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta)
+        self._check_testing_method(CacheManagerExample.lorem, 0.2, self._delta)
+
+    def test_z_cache_lambda_key_args(self):
+        """
+        Test :func:`.z_cache` by calling a wrapped classmethod twice (which uses a lambda cache_key), with a mixture of
+        positional and keyword arguments, differing each call, plus comparing the execution times
+        """
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, 'example')
+        self._check_testing_method(CacheManagerExample.lorem, 0.2, self._delta, 'example')
+
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, 'example', 'two')
+        self._check_testing_method(CacheManagerExample.lorem, 0.2, self._delta, 'example', 'two')
+
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, hello='another', banana='example')
+        self._check_testing_method(CacheManagerExample.lorem, 0.2, self._delta, hello='another', banana='example')
+
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, 'and', banana='another')
+        self._check_testing_method(CacheManagerExample.lorem, 0.2, self._delta, 'and', banana='another')
+
+    def test_z_cache_lambda_check_cache(self):
+        """
+        Confirms lambda ``cache_key`` arguments are respected when using :func:`.z_cache` - by looking up the custom cache key
+        after calling a method.
+        
+        To be extra sure that the lambda ``cache_key`` used with ``lorem`` is actually being used, this test calls ``lorem`` with some
+        arguments twice (to confirm successfully cached), then manually looks up the expected cache key generated by lorem's lambda,
+        comparing it's contents against the :attr:`._lorem_fmt_str` format string to ensure the data stored in the cache key
+        matches ``lorem``'s expected output.
+        """
+        # First we call lorem twice - first to prime the cache key, and second to confirm it's cached
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, 'example', 'two')
+        self._check_testing_method(CacheManagerExample.lorem, 0.2, self._delta, 'example', 'two')
+        # Generate the cache key that lorem() would've used for our previous call
+        ck = _lorem_key('example', 'two')
+        from privex.helpers.cache import cached
+        # Retrieve the cache key and confirm it contains lorem's string, formatted with our parameters
+        c_res = cached.get(ck)
+        f_str = self._lorem_fmt_str.format('example', 'two')
+        self.assertEqual(c_res, f_str, msg=f"(cache key: {ck}) '{c_res}' == '{f_str}'")
+
+    def test_clear_cache_keys(self):
+        """Test :meth:`CacheManagerExample.clear_cache_keys` can clear individual cache keys"""
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, 'example')
+        ck = _lorem_key('example')
+        self.assertIn('Hello! You are: example', CacheManagerExample.cache_get(ck))
+        
+        self.assertTrue(CacheManagerExample.clear_cache_keys(ck))
+        self.assertIsNone(CacheManagerExample.cache_get(ck))
+
+    def test_clear_all_cache_keys(self):
+        """Test :meth:`.CacheManagerExample.clear_all_cache_keys` appears to clear all cache keys"""
+        # call testing + lorem to ensure 2 cache keys exist
+        self._check_testing_method(CacheManagerExample.testing, cmst * 2, self._delta, 'example')
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, 'example')
+        # confirm they're cached
+        self._check_testing_method(CacheManagerExample.testing, 0.2, self._delta, 'example')
+        self._check_testing_method(CacheManagerExample.lorem, 0.2, self._delta, 'example')
+        # check get_all_cache_keys confirms there are 2 cached keys
+        self.assertEqual(len(CacheManagerExample.get_all_cache_keys()), 2)
+        # clear all cache keys
+        CacheManagerExample.clear_all_cache_keys()
+        # check get_all_cache_keys confirms there are no cache keys after we've cleared them
+        self.assertEqual(len(CacheManagerExample.get_all_cache_keys()), 0)
+        # run testing + lorem again, and assert that the runtime matches non-cached time.
+        self._check_testing_method(CacheManagerExample.testing, cmst * 2, self._delta, 'example')
+        self._check_testing_method(CacheManagerExample.lorem, cmst, self._delta, 'example')

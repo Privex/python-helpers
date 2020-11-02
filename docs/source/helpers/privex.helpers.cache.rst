@@ -49,6 +49,20 @@ init file ``__init__.py``) - these functions/classes provide a high-level entry 
       CacheWrapper
       AsyncCacheWrapper
 
+Extra Modules
+-------------
+
+
+.. autosummary::
+   :toctree: cache/extras
+
+   extras
+
+.. autosummary::
+   :toctree: cache/post_deps
+
+   post_deps
+
 
 Synchronous Cache Adapters
 --------------------------
@@ -86,6 +100,8 @@ all of the available cache adapters.
       ~CacheAdapter.CacheAdapter
       ~MemoryCache.MemoryCache
       ~RedisCache.RedisCache
+      ~MemcachedCache.MemcachedCache
+      ~SqliteCache.SqliteCache
 
 
 
@@ -103,5 +119,12 @@ AsyncIO Cache Adapters
    AsyncRedisCache
    AsyncMemoryCache
    AsyncMemcachedCache
+   AsyncSqliteCache
    base
-   
+
+
+
+
+
+
+

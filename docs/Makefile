@@ -16,7 +16,7 @@ help:
 
 # Automatically rebuild Sphinx docs on source code changes
 live: 
-	sphinx-autobuild --port 8100 -z .. -b html "$(SOURCEDIR)" $(SPHINXOPTS) "$(BUILDDIR)/html"
+	sphinx-autobuild --port 8100 --watch .. -b html "$(SOURCEDIR)" $(SPHINXOPTS) "$(BUILDDIR)/html"
 
 # Generate API docs in source/code, making sure to exclude setup.py, dist, build, and egg info etc.
 rst:

@@ -18,6 +18,8 @@ sphinx-rtd-theme = ">=0.4.3"
 docutils = ">=0.14"
 wheel = "*"
 setuptools = "*"
+mypy = "*"
+python-dotenv = "*"
 
 [packages]
 privex-loghelper = "*"
@@ -34,6 +36,9 @@ async-property = "*"
 aiomcache = "*"
 hiredis = "*"
 geoip2 = "*"
+pylibmc = "*"
+aiosqlite = "*"
+privex-db = "*"
 
 [requires]
 python_version = "3.8"

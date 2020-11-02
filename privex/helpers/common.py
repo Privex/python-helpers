@@ -1853,3 +1853,91 @@ def strip_null(value: Union[str, bytes], conv: Callable[[str], Union[str, bytes,
     """
     value = stringify(value).strip().strip(nullc).strip().strip(nullc)
     return conv(value)
+
+
+def auto_list(obj: V, conv: Union[Type[T], Callable[[V], T]] = list, force_wrap=False, force_iter=False, **kw) -> T:
+    """
+    Used for painless conversion of various data types into list-like objects (:class:`.list` / :class:`.tuple` / :class:`.set` etc.)
+    
+    Ensure object ``obj`` is a list-like object of type ``conv``, if it isn't, then attempt to convert it into
+    an instance of ``conv`` via either **list wrapping**, or **list iterating**, depending on the type that ``obj`` is detected to be.
+
+    Examples::
+
+        >>> auto_list('hello world')
+        ['hello world']
+        >>> auto_list('lorem ipsum', conv=set)
+        {'lorem ipsum'}
+        >>> auto_list('hello world', force_iter=True)
+        ['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']
+
+        >>> auto_list(('this', 'is', 'a', 'test',))
+        ['this', 'is', 'a', 'test']
+        >>> auto_list(('this', 'is', 'a', 'test',), force_wrap=True)
+        [('this', 'is', 'a', 'test')]
+
+    **List Wrapping**
+    
+    The **list wrapping** conversion method is when we wrap an object with list brackets, i.e. ``[obj]``. which makes
+    the ``obj`` a single item inside of a new list.
+    
+    This is important for simple single-value data types such as :class:`.str`, :class:`.bytes`, integers, floats etc. - since
+    using ``list()`` might simply iterate over their contents, e.g. turnining ``"hello"`` into ``['h', 'e', 'l', 'l', 'o']``,
+    which is rarely what you intend when you want to convert an object into a list.
+    
+    This method is used by default for the types::
+        
+        str, bytes, int, float, Decimal, bool, dict
+    
+    To force conversion via **List Wrapping**, set the argument ``force_wrap=True``
+
+
+    **List Iteration / Iterating**
+    
+    The **list iteration** method is when we call ``list(obj)`` to convert ``obj`` 's **contents** into a list,
+    rather than making ``obj`` an item inside of the list.
+    
+    This is important for other list-like data types such as :class:`.list` / :class:`.set` / :class:`.tuple` etc.,
+    since with the **List Wrapping** method, it would result in for example, a set ``{'hello', 'world'}`` simply
+    being wrapped by a list ``[{'hello', 'world'}]``, instead of converting it into a list.
+    
+    To force conversion via **List Iteration**, set the argument ``force_iter=True``
+    
+    This method is used bt default for the types::
+    
+        list, set, tuple, range
+        
+        any object which didn't match the list wrapping type checks and has the method: __iter__
+    
+    
+    
+    :param V|any obj: An object of practically any type, to convert into an instance type of ``conv``
+    
+    :param T|type|callable conv:  A :class:`.type` which is also callable with ``obj`` as the first positional argument, to convert
+                                ``obj`` into a ``conv`` instance.
+    
+    :param bool force_wrap: When set to ``True``, ``obj`` will always be converted into ``conv`` using the list
+                            wrapping method ``conv([obj])``, regardless of whether it's a type that should or shouldn't be wrapped.
+    
+    :param bool force_iter: When set to ``True``, ``obj`` will always be converted into ``conv`` using the list iterator
+                            method, i.e. ``conv(list(obj))``, regardless of whether it's a type that should or shouldn't be iterated.
+    
+    :keyword bool zero: Passthru argument to :func:`.empty` (treat the number ``0`` as empty)
+    :keyword bool itr:  Passthru argument to :func:`.empty` (treat zero-length iterables as empty)
+    
+    :return T|list|set|tuple data: The object ``obj`` after converting it into a ``conv`` instance
+    """
+    obj = empty_if(obj, [], zero=kw.get('zero', True), itr=kw.get('itr', True))
+    # If ``obj`` is already the correct type, then return it.
+    if obj is not None and isinstance(obj, conv): return obj
+    
+    # For basic object types which simply contain a singular piece of data, such as strings, bytes, int, float etc.
+    # it's important that we wrap them in [] to make them into just one item inside of a list, before converting the list
+    # into whatever it's final form is.
+    if not force_iter and (force_wrap or isinstance(obj, (str, bytes, int, float, Decimal, bool, dict))):
+        return conv([obj])
+    
+    # If an object is a list/set/tuple/similar iterable object, then it's probably better if we use ``list()`` + ``conv()`` to convert
+    # the CONTENTS of the object into ``conv``, rather than just wrapping the object itself as a single item
+    if force_iter or isinstance(obj, (list, set, tuple, range)) or hasattr(obj, '__iter__'): return conv(list(obj))
+    return conv(obj)

@@ -1,5 +1,86 @@
 -----------------------------------------------------------------------------------------------------------------------
 
+3.2.0 - Added MemcachedCache + privex.helpers.cache.extra, plus various other additions
+====================================================================================================================
+
+-----------------------------------------------------------------------------------------------------------------------
+
+Author: Chris (Someguy123)
+Date:   Mon Nov 2 03:26 AM 2020 +0000
+
+- **privex.helpers.settings**
+    - Added `DEFAULT_CACHE_ADAPTER` which can be adjusted via the env var `PRIVEX_CACHE_ADAPTER`. This setting allows
+      overriding the cache adapter which is used automatically by default via `cached` / `async_cached`, along with
+      the global adapter when you call `get_adapter`
+      
+    - Added `DEFAULT_ASYNC_CACHE_ADAPTER` which can be adjusted via the env var `PRIVEX_ASYNC_CACHE_ADAPTER`.
+      It defaults to the same value as `DEFAULT_CACHE_ADAPTER`, since thanks to the new `import_adapter` function
+      and `ADAPTER_MAP` dictionary in `privex.helpers.cache`, it's now possible to reference cache adapters by simple
+      names such as `memcached`, `redis`, `sqlite3`, `memory` etc. - and these aliases point to either the synchronous
+      or asyncio version of their related adapter depending on which context they're being passed into. 
+
+- **privex.helpers.cache**
+    - Added `MemcachedCache` module, which contains the synchronous cache adapter `MemcachedCache`. This is simply a synchronous
+      version of `AsyncMemcachedCache` that uses `pylibmc` instead of `aiomcache`.
+      
+    - Added `ADAPTER_MAP` dictionary, which maps aliases such as `memcached`, `redis`, `sqlite3`, `memory` etc. to their
+      respective synchronous and asyncio adapter module paths, which can be loaded using the 
+      newly added `import_adapter` function, or simply using `adapter_set` / `async_adapter_set`.
+      
+    - Added `import_adapter` function, which looks up an adapter alias name such as `redis` / `memcached`, maps it
+      to the fully qualified module path via `ADAPTER_MAP`, and then loads the module + extracts the class from the module.
+     
+    - Adjusted `adapter_set`, `async_adapter_set`, along with `CacheWrapper` + `AsyncCacheWrapper` so that they now use the
+      default string cache adapter defined in `settings`, and can transparently handle string adapter values by passing 
+      them off to `import_adapter`.
+    
+    - Added new `extras` module
+    
+        - `CacheManagerMixin` is a class mixin which adds various methods and settings to assist with class-scoped caching, 
+           including an adjustable class-level cache prefix `.cache_prefix`, a method to remove all known cache keys managed by
+           your class `.clear_all_cache_keys`, and a special decorator which automatically integrates with your class `.z_cache`
+           by intercepting the first argument of a method call.
+           
+        - `z_cache` - A special method caching decorator which is designed to integrate with classes that 
+           extend `.CacheManagerMixin`
+              
+          This is simply a wrapper for `.r_cache` - it transparently caches the output of a wrapped method/function, but
+          unlike `.r_cache`, it's designed to automatically integrate with classes which extend `.CacheManagerMixin` ,
+          allowing it to automatically retrieve cache settings such as the cache prefix, default cache time, along with 
+          directly calling various classmethods which enable logging of newly created `cache_key` 's for painless cleanup of
+          cache keys when needed, without having to manually track them, or doing the nuclear option of erasing the entire
+          cache system's database.
+
+- **privex.helpers.common**
+    - Added new small helper function `auto_list`, which is a small but useful function that simplifies the conversion
+      of objects into lists, sets, tuples etc. with the option to manually force a certain conversion method,
+      either `list wrapping` or `list iteration`
+
+- **privex.helpers.plugin**
+    - Added various functions for managing **memcached instances** via the `pylibmc` library
+        - `connect_memcached` - create a new memcached `Client` object
+        - `get_memcached` - get or create a Memcached `Client` object shared by your thread
+        - `close_memcached` - close the Memcached `Client` connection and delete it from the threadstore
+        - `reset_memcached` - close the shared `Client` then re-create it again.
+        - `configure_memcached` - configure Memcached settings then automatically reset the shared `Client` instance.
+    - Added new `HAS_MEMCACHED` boolean value, to track whether synchronous memcached via `pylibmc` is available
+
+- General stuff
+    - Added `pylibmc` to extras/cache.txt
+    - Added some missing packages to the `Pipfile` - and synchronised `Pipfile.lock`
+    - Added `.env` to `.gitignore`
+    - Created unit tests for the new `CacheManagerMixin` class and `z_cache` decorator
+    - Created unit tests for the new `MemcachedCache` cache adapter
+    - Fixed the `live` command in `docs/Makefile` for newer `sphinx-autobuild`
+    - Added `SqliteCache` and `MemcachedCache` to the docs
+    - Added `privex.helpers.cache.extras` and `privex.helpers.cache.post_dep` to the docs
+    - Added some other missing things to the docs
+    - Created and updated a lot of stub files in `privex_stubs` (assists IDEs like PyCharm with type hinting 
+        and function/method previews)
+    - Possibly other various additions / fixes / improvements that I forgot to list.
+
+-----------------------------------------------------------------------------------------------------------------------
+
 3.1.0 - Added SqliteCache + AsyncSqliteCache, plus minor fixes in privex.helpers.plugin
 ====================================================================================================================
 

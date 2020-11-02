@@ -12,7 +12,8 @@ Available Cache Adapters
 
 **Standard Synchronous Adapters**
 
-Two synchronous cache adapters are included by default - :class:`.MemoryCache` (dependency free), and
+Four synchronous cache adapters are included by default - :class:`.MemoryCache` (dependency free),
+:class:`.MemcachedCache` (needs ``pylibmc`` library), :class:`.SqliteCache` (needs ``privex-db`` library),
 :class:`.RedisCache` (needs ``redis`` library).
 
 While these synchronous classes don't support coroutines for most methods, as of privex-helpers 2.7 the method
@@ -25,7 +26,9 @@ and is available on all :class:`.CacheAdapter` sub-classes (both :class:`.Memory
     ==============================   ==================================================================================================
     :class:`.CacheAdapter`           This is the base class for all synchronous cache adapters (doesn't do anything)
     :class:`.MemoryCache`            A cache adapter which stores cached items in memory using a dict. Fully functional incl. timeout.
+    :class:`.MemcachedCache`         A cache adapter for `Memcached`_ using the synchronous python library ``pylibmc``
     :class:`.RedisCache`             A cache adapter for `Redis`_ using the python library ``redis``
+    :class:`.SqliteCache`            A cache adapter for `SQLite3`_ using the standard Python module :mod:`sqlite3` + :mod:`privex.db`
     ==============================   ==================================================================================================
 
 **Asynchronous (Python AsyncIO) Adapters**
@@ -33,8 +36,9 @@ and is available on all :class:`.CacheAdapter` sub-classes (both :class:`.Memory
 Over the past few years, Python's AsyncIO has grown more mature and has gotten a lot of attention. Thankfully, whether you use
 AsyncIO or not, we've got you covered.
 
-Three AsyncIO cache adapters are included by default - :class:`.AsyncMemoryCache` (dependency free),
-:class:`.AsyncRedisCache` (needs ``aioredis`` library), and :class:`.AsyncMemcachedCache` (needs ``aiomcache`` library).
+Four AsyncIO cache adapters are included by default - :class:`.AsyncMemoryCache` (dependency free),
+:class:`.AsyncRedisCache` (needs ``aioredis`` library), :class:`.AsyncSqliteCache` (needs ``aiosqlite`` library),
+and :class:`.AsyncMemcachedCache` (needs ``aiomcache`` library).
 
     ==============================   ==================================================================================================
     Adapter                          Description
@@ -43,12 +47,13 @@ Three AsyncIO cache adapters are included by default - :class:`.AsyncMemoryCache
     :class:`.AsyncMemoryCache`       A cache adapter which stores cached items in memory using a dict. Fully functional incl. timeout.
     :class:`.AsyncRedisCache`        A cache adapter for `Redis`_ using the AsyncIO python library ``aioredis``
     :class:`.AsyncMemcachedCache`    A cache adapter for `Memcached`_ using the AsyncIO python library ``aiomcache``
+    :class:`.AsyncSqliteCache`       A cache adapter for `SQLite3`_ using the AsyncIO python library ``aiosqlite``
     ==============================   ==================================================================================================
 
 
 .. _Redis: https://redis.io/
 .. _Memcached: https://www.memcached.org/
-
+.. _SQLite3: https://www.sqlite.org/
 
 Setting / updating the global cache adapter instance
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -57,7 +62,15 @@ First import the ``cache`` module.
 
     >>> from privex.helpers import cache
 
-You must instantiate your cache adapter of choice before passing it to :py:func:`.adapter_set` - which updates
+When setting an adapter using :func:`.adapter_set`, if your application has a user configurable cache adapter via
+a plain text configuration file (e.g. a ``.env`` file), or you simply don't have any need to manually instantiate a cache adapter,
+then you can pass either an alias name (``memory``, ``redis``, ``memcached``, ``sqlite3``), or a full adapter class name
+(such as ``MemoryCache``, ``MemcachedCache``, ``RedisCache``, ``SqliteCache``). Example usage::
+
+    >>> cache.adapter_set('memcached')
+    >>> cache.adapter_set('MemcachedCache')
+
+Alternatively, you may instantiate your cache adapter of choice before passing it to :py:func:`.adapter_set` - which updates
 the global cache adapter instance.
 
     >>> my_adapter = cache.MemoryCache()
@@ -139,7 +152,8 @@ may cause problems in certain scenarios, so it's recommended to avoid using the 
 To set / replace the global AsyncIO cache adapter, use :func:`.async_adapter_set` - similarly, you can use :func:`.async_adapter_get`
 to get the current adapter instance (e.g. a direct instance of :class:`.AsyncRedisCache` if that's the current adapter)::
 
-    >>> async_adapter_set(AsyncRedisCache())
+    >>> async_adapter_set(AsyncRedisCache())    # Either pass an instance of an async cache adapter class
+    >>> async_adapter_set('redis')              # Or pass a simple string alias name, such as: redis, memcached, memory, sqlite3
     >>> adp = async_adapter_get()
     >>> await adp.set('lorem', 'test')  # Set 'lorem' using the AsyncRedisCache instance directly
     >>> await adp.get('lorem')          # Get 'lorem' using the AsyncRedisCache instance directly
@@ -229,11 +243,14 @@ Cache API Docs
 """
 import asyncio
 import logging
+import importlib
 from inspect import isclass
 
-from privex.helpers import plugin
+from privex.helpers import plugin, settings
 from privex.helpers.common import empty_if, LayeredContext
 from privex.helpers.asyncx import awaitable, await_if_needed, loop_run
+
+from privex.helpers.collections import DictObject
 
 log = logging.getLogger(__name__)
 
@@ -261,6 +278,12 @@ except ImportError:
     log.debug("[%s] Failed to import %s from %s (missing package 'redis' maybe?)", __name__, 'RedisCache', f'{__name__}.RedisCache')
 
 try:
+    from privex.helpers.cache.MemcachedCache import MemcachedCache
+except ImportError:
+    log.debug("[%s] Failed to import %s from %s (missing package 'pylibmc' maybe?)", __name__, 'MemcachedCache',
+              f'{__name__}.MemcachedCache')
+
+try:
     from privex.helpers.cache.asyncx import *
 except ImportError:
     log.exception("[%s] Failed to import %s from %s (unknown error!)", __name__, '*', f'{__name__}.asyncx')
@@ -277,8 +300,120 @@ __STORE['async_adapter']: AsyncCacheAdapter
 
 CLSCacheAdapter = Union[Type[CacheAdapter], Type[AsyncCacheAdapter]]
 INSCacheAdapter = Union[CacheAdapter, AsyncCacheAdapter]
-ANYCacheAdapter = Union[CLSCacheAdapter, INSCacheAdapter]
+ANYCacheAdapter = Union[CLSCacheAdapter, INSCacheAdapter, str]
 
+ADAPTER_MAP = DictObject(
+    sync=DictObject(
+        memory='privex.helpers.cache.MemoryCache.MemoryCache',
+        redis='privex.helpers.cache.RedisCache.RedisCache',
+        memcached='privex.helpers.cache.MemcachedCache.MemcachedCache',
+        sqlite3='privex.helpers.cache.SqliteCache.SqliteCache',
+    ),
+    asyncio=DictObject(
+        memory='privex.helpers.cache.asyncx.AsyncMemoryCache.AsyncMemoryCache',
+        redis='privex.helpers.cache.asyncx.AsyncRedisCache.AsyncRedisCache',
+        memcached='privex.helpers.cache.asyncx.AsyncMemcachedCache.AsyncMemcachedCache',
+        sqlite3='privex.helpers.cache.asyncx.AsyncSqliteCache.AsyncSqliteCache',
+    ),
+    
+)
+
+_AM = ADAPTER_MAP
+
+_AM.sync.ram, _AM.asyncio.ram = _AM.sync.mem, _AM.asyncio.mem = _AM.sync.memory, _AM.asyncio.memory
+_AM.sync.mcache, _AM.asyncio.mcache = _AM.sync.memcache, _AM.asyncio.memcache = _AM.sync.memcached, _AM.asyncio.memcached
+_AM.sync.sqlitedb, _AM.asyncio.sqlitedb = _AM.sync.sqlite, _AM.asyncio.sqlite = _AM.sync.sqlite3, _AM.asyncio.sqlite3
+
+_AM.shared = DictObject(
+    # Synchronous cache adapters
+    MemoryCache=_AM.sync.memory, RedisCache=_AM.sync.redis, MemcachedCache=_AM.sync.memcached,
+    SqliteCache=_AM.sync.sqlite3,
+    # Synchronous cache adapters (xxxAdapter aliases)
+    MemoryAdapter=_AM.sync.memory, RedisAdapter=_AM.sync.redis, MemcachedAdapter=_AM.sync.memcached,
+    SqliteAdapter=_AM.sync.sqlite3,
+    # AsyncIO cache adapters
+    AsyncMemoryCache=_AM.asyncio.memory, AsyncRedisCache=_AM.asyncio.redis, AsyncMemcachedCache=_AM.asyncio.memcached,
+    AsyncSqliteCache=_AM.asyncio.sqlite3,
+    # AsyncIO cache adapters (xxxAdapter aliases)
+    AsyncMemoryAdapter=_AM.asyncio.memory, AsyncRedisAdapter=_AM.asyncio.redis, AsyncMemcachedAdapter=_AM.asyncio.memcached,
+    AsyncSqliteAdapter=_AM.asyncio.sqlite3
+)
+
+
+def import_adapter_path(full_path: str) -> Type[Union[CacheAdapter, AsyncCacheAdapter]]:
+    """
+    This function imports a fully qualified module path, with a class/function/attribute name as the final component
+    of the dot delimitered string.
+    
+    Example::
+    
+        >>> # Equivalent to: from privex.helpers.cache.MemcachedCache import MemcachedCache as _MemcachedCache
+        >>> _MemcachedCache = import_adapter_path('privex.helpers.cache.MemcachedCache.MemcachedCache')
+        
+    :param str full_path: A fully qualified module path, with a class/function/attribute name as the final component
+                          of the dot delimitered string.
+    :return type obj:     The class/function/variable that was imported from the module in ``full_path``
+    """
+    
+    split_mod = full_path.split('.')
+    path_mod, path_class = '.'.join(split_mod[:-1]), split_mod[-1]
+    mod = importlib.import_module(path_mod)
+    return getattr(mod, path_class)
+
+
+def import_adapter(name: str, cat: str = 'sync', fallback_shared=True) -> Type[Union[CacheAdapter, AsyncCacheAdapter]]:
+    """
+    Import a cache adapter class using either it's class name, or config/human-friendly alias name.
+    
+    By default, ``fallback_shared`` is enabled, which allows importing adapter names that are in the ``shared`` category, such as
+    ``AsyncRedisCache`` / ``MemcachedCache`` while ``cat`` is set to ``asyncio`` / ``sync``
+    
+    Adapter Categories::
+    
+      * ``shared`` - Contains full cache adapter class names, e.g. ``RedisCache``, ``AsyncMemcachedCache`` etc.
+      * ``sync`` (default) - Contains synchronous cache adapters with simple alias names, e.g. ``redis``, ``memory``, ``memcached``
+      * ``asyncio`` / ``async`` - Contains AsyncIO cache adapters with simple alias names, e.g. ``redis``, ``memory``, ``memcached``
+    
+    Examples::
+        
+        >>> _MemcachedCache = import_adapter('memcached')
+        >>> _AsyncRedisCache = import_adapter('redis', 'asyncio')
+        >>> _SqliteCache = import_adapter('SqliteCache')
+        
+        >>> mc = _MemcachedCache()
+        >>> mc.set('hello', 'world')
+        >>> mc['hello']
+        'world'
+    
+    :param str name: The dictionary key / name for the adapter, e.g. ``memcached`` / ``sqlite3``, or full adapter class name
+                      such as ``AsyncMemoryCache`` if ``cat`` is ``'shared'``
+    
+    :param str cat: (default: ``'sync'``) One of: ``'sync'``, ``'asyncio'``, ``'async'``, or ``'shared'``
+    
+    :param bool fallback_shared: (default: ``True``) When set to ``True``, if ``name`` can't be found in the current ``cat`` category,
+                                 check if it exists in the ``shared`` category - if it does, then retrieve the module path from that.
+    
+    :raises KeyError: When the adapter name ``name`` isn't found in the category (nor in ``shared`` if ``fallback_shared`` is enabled)
+    :raises AttributeError: When the category ``cat`` isn't found in :attr:`.ADAPTER_MAP`
+    
+    :return Type[Union[CacheAdapter, AsyncCacheAdapter]] adp_class: The uninstantiated class for the cache adapter that was imported.
+    """
+    cat = 'asyncio' if cat == 'async' else cat.lower()
+    dkeys = list(_AM.keys())
+    if cat not in dkeys:
+        raise AttributeError(f"Invalid category. You must specify one of the following categories (aka 'cat'): {dkeys}")
+    modx: dict = _AM[cat]
+    try:
+        mpath = modx[name if name in modx else name.lower()]
+    except (KeyError, IndexError) as e:
+        if fallback_shared and (name.endswith('Cache') or name.endswith('Adapter')) and name in _AM['shared']:
+            log.info(f"Adapter name '{name}' wasn't found in category '{cat}' - but WAS found in the shared category, and "
+                     f"fallback_shared is enabled. Falling back to: _AM['shared']['{name}']")
+            mpath = _AM['shared'][name]
+        else:
+            raise KeyError(f"Adapter name '{name}' not found in category '{cat}'. Available adapters in '{cat}': {modx.keys()}")
+    return import_adapter_path(mpath)
+    
 
 class CacheWrapper(object):
     """
@@ -311,11 +446,12 @@ class CacheWrapper(object):
     cache_instance: Optional[INSCacheAdapter] = None
     """Holds the singleton instance of a :class:`.CacheAdapter` implementation"""
     
-    default_adapter: Type[CLSCacheAdapter] = MemoryCache
+    default_adapter: Union[Type[CLSCacheAdapter], str] = settings.DEFAULT_CACHE_ADAPTER
     """The default adapter class to instantiate if :py:attr:`.cache_instance` is ``None``"""
 
     instance_args = []
     instance_kwargs = {}
+    is_adapter_async: bool = False
     
     max_context_layers: int = 1
     _ctx_tracker: Optional[LayeredContext] = None
@@ -340,12 +476,16 @@ class CacheWrapper(object):
         """
         if not cls.cache_instance:
             cls.instance_args, cls.instance_kwargs = list(args), dict(kwargs)
+            if isinstance(default, str): default = import_adapter(default, 'asyncio' if cls.is_adapter_async else 'sync')
             cls.set_adapter(default(*args, **kwargs))
         return cls.cache_instance
 
     @classmethod
     def set_adapter(cls, adapter: ANYCacheAdapter, *args, **kwargs) -> INSCacheAdapter:
         cls.instance_args, cls.instance_kwargs = list(args), dict(kwargs)
+        cls.cache_instance = None
+        if isinstance(adapter, str): adapter = import_adapter(adapter, 'asyncio' if cls.is_adapter_async else 'sync')
+
         cls.cache_instance = cls.get_adapter(adapter, *args, **kwargs) if isclass(adapter) else adapter
         cls.reset_context_tracker()
         return cls.cache_instance
@@ -439,14 +579,14 @@ class AsyncCacheWrapper(CacheWrapper):
     instance_args = []
     instance_kwargs = {}
     
-    default_adapter: Type[AsyncCacheAdapter] = AsyncMemoryCache
+    default_adapter: Union[Type[AsyncCacheAdapter], str] = settings.DEFAULT_ASYNC_CACHE_ADAPTER
     """The default adapter class to instantiate if :py:attr:`.cache_instance` is ``None``"""
 
     max_context_layers: int = 1
     _ctx_tracker: Optional[LayeredContext] = None
     
     @classmethod
-    def get_adapter(cls, default: Type[AsyncCacheAdapter] = default_adapter, *args, **kwargs) -> AsyncCacheAdapter:
+    def get_adapter(cls, default: Union[Type[AsyncCacheAdapter], str] = default_adapter, *args, **kwargs) -> AsyncCacheAdapter:
         
         # if not cls.cache_instance:
         #     cls.instance_args, cls.instance_kwargs = list(args), dict(kwargs)
@@ -454,7 +594,7 @@ class AsyncCacheWrapper(CacheWrapper):
         return super(AsyncCacheWrapper, cls).get_adapter(default, *args, **kwargs)
 
     @classmethod
-    def set_adapter(cls, adapter: AsyncCacheAdapter, *args, **kwargs) -> AsyncCacheAdapter:
+    def set_adapter(cls, adapter: Union[AsyncCacheAdapter, str], *args, **kwargs) -> AsyncCacheAdapter:
         return super(AsyncCacheWrapper, cls).set_adapter(adapter, *args, **kwargs)
         # cls.cache_instance = adapter
         # return cls.cache_instance
@@ -522,7 +662,7 @@ class AsyncCacheWrapper(CacheWrapper):
 async_cached: Union[AsyncCacheAdapter, AsyncCacheWrapper] = AsyncCacheWrapper()
 
 
-def async_adapter_set(adapter: AsyncCacheAdapter) -> AsyncCacheAdapter:
+def async_adapter_set(adapter: Union[AsyncCacheAdapter, str]) -> AsyncCacheAdapter:
     """
     Same as :func:`.adapter_set` but sets ``__STORE['async_adapter']`` instead of ``'adapter'``,
     and sets the adapter for async-only :attr:`.async_cached` ( :class:`.AsyncCacheWrapper` ) instead of
@@ -531,24 +671,33 @@ def async_adapter_set(adapter: AsyncCacheAdapter) -> AsyncCacheAdapter:
     Example::
     
         >>> from privex.helpers.cache import AsyncRedisCache, async_adapter_set
+        >>> # Passing an instantiated adapter class
         >>> async_adapter_set(AsyncRedisCache())
+        >>> # Passing a simple string adapter name to be imported and instantiated
+        >>> async_adapter_set('memcached')          # You can either pass a simple "alias" name
+        >>> async_adapter_set('AsyncSqliteCache')   # Or you can pass a full adapter class name
     
     """
+    if isinstance(adapter, str):
+        c_adapter = import_adapter(adapter, 'asyncio')
+        adapter = c_adapter()
     __STORE['async_adapter'] = adapter
     async_cached.set_adapter(adapter)
     return __STORE['async_adapter']
 
 
-def async_adapter_get(default: Type[AsyncCacheAdapter] = AsyncMemoryCache) -> AsyncCacheAdapter:
+def async_adapter_get(default: Union[Type[AsyncCacheAdapter], str] = settings.DEFAULT_ASYNC_CACHE_ADAPTER) -> AsyncCacheAdapter:
     """Same as :func:`.adapter_get` but gets ``__STORE['async_adapter']`` instead of ``'adapter'``"""
     if 'async_adapter' not in __STORE or __STORE['async_adapter'] is None:
         if not default:
             raise NotConfigured('No async cache adapter has been configured for privex.helpers.cache!')
+        if isinstance(default, str):
+            default = import_adapter(default, 'asyncio')
         async_adapter_set(default())
     return __STORE['async_adapter']
 
 
-def adapter_set(adapter: CacheAdapter):
+def adapter_set(adapter: Union[CacheAdapter, str]) -> CacheAdapter:
     """
     Set the global cache adapter instance to ``adapter`` - which should be an instantiated adapter class which
     implements :class:`.CacheAdapter`
@@ -556,19 +705,23 @@ def adapter_set(adapter: CacheAdapter):
     **Example**::
     
         >>> from privex.helpers import cache
-        >>> cache.adapter_set(cache.MemoryCache())
-    
+        >>> cache.adapter_set(cache.MemoryCache())   # Passing an instantiated adapter class
+        >>> cache.adapter_set('redis')               # Alternatively, you can pass a string alias name of an adapter
+        >>> cache.adapter_set('SqliteCache')         # Or the full class name of an adapter
     
     :param CacheAdapter adapter: An instance of a class which implements :class:`.CacheAdapter` for global use.
     :return CacheAdapter adapter: A reference to your adapter from ``__STORE['adapter']``
     """
+    if isinstance(adapter, str):
+        c_adapter = import_adapter(adapter, 'sync')
+        adapter = c_adapter()
     __STORE['adapter'] = adapter
     cached.set_adapter(adapter)
     
     return __STORE['adapter']
 
 
-def adapter_get(default: Type[CacheAdapter] = MemoryCache) -> CacheAdapter:
+def adapter_get(default: Union[Type[CacheAdapter], str] = settings.DEFAULT_CACHE_ADAPTER) -> CacheAdapter:
     """
     Get the global cache adapter instance. If there isn't one, then by default this function will initialise
     :class:`.MemoryAdapter` and set it as the global cache adapter.
@@ -585,6 +738,8 @@ def adapter_get(default: Type[CacheAdapter] = MemoryCache) -> CacheAdapter:
     if 'adapter' not in __STORE or __STORE['adapter'] is None:
         if not default:
             raise NotConfigured('No cache adapter has been configured for privex.helpers.cache!')
+        if isinstance(default, str):
+            default = import_adapter(default, 'sync')
         __STORE['adapter'] = default()
     return __STORE['adapter']
 

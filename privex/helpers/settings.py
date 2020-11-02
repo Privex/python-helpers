@@ -69,27 +69,84 @@ def _env_int(v, d) -> int: return int(env(v, d))
 # General Cache Settings
 ########
 
-DEFAULT_CACHE_TIMEOUT = 300
+DEFAULT_CACHE_TIMEOUT = _env_int('PRIVEX_CACHE_TIMEOUT', 300)
+
 """Default cache timeout in seconds, used by cache adapters in the module :py:mod:`.cache`"""
+
+DEFAULT_CACHE_ADAPTER = env('PRIVEX_CACHE_ADAPTER', 'memory')
+"""
+The default cache adapter to use by default, with the framework-agnostic cache abstraction layer ( :mod:`privex.helpers.cache` ).
+
+Can be one of the following:
+
+  ( more options may be available since the time of writing, see :attr:`privex.helpers.cache.ADAPTER_MAP` )
+  
+  * ``memory`` / ``mem`` / ``ram`` - Dependency-free memory cache inside of your application's memory.
+  
+    **Requires:** N/A - no dependencies
+    
+    **Class:** :class:`.MemoryCache` (sync) // :class:`.AsyncMemoryCache` (async)
+    
+  * ``redis`` - Caching via a local or remote Redis server
+     
+     **Requires**: ``redis`` (sync) and/or ``aioredis`` (async) libraries
+     
+     **Class:** :class:`.RedisCache` (sync) // :class:`.AsyncRedisCache` (async)
+     
+  * ``memcached`` / ``memcache`` / ``mcache`` - Caching via a local or remote Memcached server
+  
+    **Requires**: ``pylibmc`` (sync) and/or // ``aiomcache`` (async) libraries
+    
+    **Class:** :class:`.MemcachedCache` (sync) // :class:`.AsyncMemcachedCache` (async)
+
+  * ``sqlite3`` / ``sqlite`` / ``sqlitedb`` - Caching via an SQLite3 database stored on the filesystem
+  
+    **Requires**: ``privex-db`` (for both sync and async) and ``aiosqlite`` (only for async) libraries
+    
+    **Class:** :class:`.SqliteCache` (sync) // :class:`.AsyncSqliteCache` (async)
+
+
+"""
+
+DEFAULT_ASYNC_CACHE_ADAPTER = env('PRIVEX_ASYNC_CACHE_ADAPTER', DEFAULT_CACHE_ADAPTER)
+"""
+The default cache adapter for the AsyncIO caching system. :mod:`privex.helpers.cache` / :mod:`privex.helpers.cache.asyncx`
+
+This defaults to :attr:`.DEFAULT_CACHE_ADAPTER` - since at the time of writing, all cache adapter alias names are also valid
+for the AsyncIO cache system.
+
+For example, when ``'redis'`` is specified to :attr:`.DEFAULT_ASYNC_CACHE_ADAPTER` , the :class:`.AsyncRedisCache` AsyncIO cache adapter
+will be loaded for the async cache system, while when specified to the standard ``DEFAULT_CACHE_ADAPTER``, the
+synchronous :class:`.RedisCache` adapter is loaded for use with the synchronous cache APIs.
+
+Available adapters ( same as :attr:`.DEFAULT_CACHE_ADAPTER` ):
+
+  * ``memory`` / ``mem`` / ``ram`` - Dependency-free memory cache inside of your application's memory.
+  * ``redis`` - Caching via a local or remote Redis server
+  * ``memcached`` / ``memcache`` / ``mcache`` - Caching via a local or remote Memcached server
+  * ``sqlite3`` / ``sqlite`` / ``sqlitedb`` - Caching via an SQLite3 database stored on the filesystem
+
+
+"""
 
 ########
 # Redis Settings
 ########
 
-REDIS_HOST = 'localhost'
+REDIS_HOST = env('PRIVEX_REDIS_HOST', 'localhost')
 """Hostname / IP address where redis-server is running on"""
-REDIS_PORT = 6379
+REDIS_PORT = _env_int('PRIVEX_REDIS_PORT', 6379)
 """Port number that Redis is running on at ``REDIS_HOST``"""
-REDIS_DB = 0
+REDIS_DB = _env_int('PRIVEX_REDIS_DB', 0)
 """Redis database to use (number)"""
 
 ########
 # Memcached Settings
 ########
 
-MEMCACHED_HOST = 'localhost'
+MEMCACHED_HOST = env('PRIVEX_MEMCACHED_HOST', 'localhost')
 """Hostname / IP address where Memcached is running on"""
-MEMCACHED_PORT = 11211
+MEMCACHED_PORT = _env_int('PRIVEX_MEMCACHED_PORT', 11211)
 """Port number that Memcached is running on at ``MEMCACHED_HOST``"""
 
 ########################################
@@ -148,7 +205,7 @@ This is a storage variable - becomes either ``True`` or ``False`` after :func:`.
 SSL_VERIFY_CERT: bool = _env_bool('SSL_VERIFY_CERT', True)
 SSL_VERIFY_HOSTNAME: bool = _env_bool('SSL_VERIFY_HOSTNAME', True)
 
-DEFAULT_USER_AGENT = "Python Privex Helpers ( https://github.com/Privex/python-helpers )"
+DEFAULT_USER_AGENT = env('PRIVEX_USER_AGENT', "Python Privex Helpers ( https://github.com/Privex/python-helpers )")
 
 # V4_CHECKED_AT: Optional[datetime] = None
 # """
