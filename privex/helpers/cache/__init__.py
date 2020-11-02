@@ -578,6 +578,7 @@ class AsyncCacheWrapper(CacheWrapper):
     
     instance_args = []
     instance_kwargs = {}
+    is_adapter_async: bool = True
     
     default_adapter: Union[Type[AsyncCacheAdapter], str] = settings.DEFAULT_ASYNC_CACHE_ADAPTER
     """The default adapter class to instantiate if :py:attr:`.cache_instance` is ``None``"""
