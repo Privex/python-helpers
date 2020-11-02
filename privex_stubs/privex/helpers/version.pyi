@@ -1,0 +1,2 @@
+name: str
+VERSION: str

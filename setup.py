@@ -37,7 +37,8 @@ import warnings
 
 from setuptools import setup, find_packages
 from os.path import join, dirname, abspath
-from privex.helpers import VERSION, extras_require
+from privex.helpers.setuppy.common import extras_require
+from privex.helpers.version import VERSION
 
 BASE_DIR = dirname(abspath(__file__))
 
@@ -51,6 +52,11 @@ extra_commands = {}
 try:
     # noinspection PyUnresolvedReferences
     import privex.helpers.setuppy.commands
+    from privex.helpers import settings
+
+    # The file which contains "VERSION = '1.2.3'"
+    settings.VERSION_FILE = join(BASE_DIR, 'privex', 'helpers', 'version.py')
+    
     extra_commands['extras'] = privex.helpers.setuppy.commands.ExtrasCommand
     extra_commands['bump'] = privex.helpers.setuppy.commands.BumpCommand
 except (ImportError, AttributeError) as e:

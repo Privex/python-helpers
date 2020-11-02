@@ -53,17 +53,91 @@ import logging
 import warnings
 
 from privex.helpers.common import *
-from privex.helpers.collections import *
-from privex.helpers.decorators import *
-from privex.helpers.net import *
-from privex.helpers.exceptions import *
-from privex.helpers.plugin import *
-from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, cached
-
-from privex.helpers import plugin
 
 log = logging.getLogger(__name__)
 
+
+class _Dummy:
+    def __init__(self):
+        self.dummydata = {}
+    
+    def __getattr__(self, item):
+        try:
+            return object.__getattribute__(self, item)
+        except AttributeError:
+            pass
+        try:
+            if item in object.__getattribute__(self, 'dummydata'):
+                return object.__getattribute__(self, 'dummydata')[item]
+        except AttributeError:
+            pass
+        
+        return lambda *args, **kwargs: None
+    
+    def __setattr__(self, key, value):
+        if key == 'dummydata':
+            return object.__setattr__(self, key, value)
+        m = object.__getattribute__(self, 'dummydata')
+        m[key] = value
+    
+    def __getitem__(self, item):
+        try:
+            return self.__getattr__(item)
+        except AttributeError as ex:
+            raise KeyError(str(ex))
+    
+    def __setitem__(self, key, value):
+        try:
+            self.__setattr__(key, value)
+        except AttributeError as ex:
+            raise KeyError(str(ex))
+
+try:
+    from privex.helpers.collections import *
+except ImportError as e:
+    log.warning(
+        'privex.helpers __init__ failed to import "%s", not loading %s module. reason: %s %s',
+        'privex.helpers.collections', 'collections', type(e), str(e)
+    )
+
+try:
+    from privex.helpers.decorators import *
+except ImportError as e:
+    log.warning(
+        'privex.helpers __init__ failed to import "%s", not loading %s module. reason: %s %s',
+        'privex.helpers.decorators', 'decorators', type(e), str(e)
+    )
+try:
+    from privex.helpers.net import *
+except ImportError as e:
+    log.warning(
+        'privex.helpers __init__ failed to import "%s", not loading %s module. reason: %s %s',
+        'privex.helpers.net', 'net', type(e), str(e)
+    )
+
+from privex.helpers.exceptions import *
+
+try:
+    from privex.helpers.cache import CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, cached
+except ImportError as e:
+    log.warning(
+        'privex.helpers __init__ failed to import "%s", not loading %s module. reason: %s %s',
+        'privex.helpers.cache', 'cache', type(e), str(e)
+    )
+    # noinspection PyTypeChecker
+    CacheNotFound, CacheAdapter, CacheWrapper, MemoryCache, cached = _Dummy(), _Dummy(), _Dummy(), _Dummy(), _Dummy()
+
+
+try:
+    from privex.helpers import plugin
+    from privex.helpers.plugin import *
+except ImportError as e:
+    log.warning(
+        'privex.helpers __init__ failed to import "%s", not loading %s module. reason: %s %s',
+        'privex.helpers.plugin', 'plugin', type(e), str(e)
+    )
+    # noinspection PyTypeChecker
+    plugin = _Dummy()
 
 try:
     from privex.helpers.cache.RedisCache import RedisCache
@@ -77,6 +151,11 @@ try:
     plugin.HAS_MEMCACHED = True
 except ImportError:
     log.debug('privex.helpers __init__ failed to import "MemcachedCache", not loading MemcachedCache')
+
+try:
+    from privex.helpers.cache.SqliteCache import SqliteCache
+except ImportError:
+    log.debug('privex.helpers __init__ failed to import "SqliteCache", not loading SqliteCache')
 
 try:
     from privex.helpers.cache.asyncx import *
@@ -160,7 +239,10 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'helpers'
 
-VERSION = '3.2.0'
+from privex.helpers import version as _version_mod
+
+VERSION = _version_mod.VERSION
+
 
 
 
