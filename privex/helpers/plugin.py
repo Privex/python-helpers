@@ -255,14 +255,14 @@ try:
                     continue
                 log.debug("Closing redis for thread ID %s", t_id)
                 try:
-                    rd.close()
+                    rd.aclose()
                 except Exception:
                     log.exception("Exception while closing redis for thread ID %s", t_id)
             return clean_threadstore(name='redis', clean_all=True)
     
         rd: Union[str, redis.Redis] = _get_threadstore('redis', 'NOT_FOUND', thread_id=thread_id)
         if rd != 'NOT_FOUND':
-            rd.close()
+            rd.aclose()
             clean_threadstore(thread_id=thread_id, name='redis')
             return True
         return False
@@ -291,18 +291,14 @@ except Exception as e:
               'Redis dependent helpers will be disabled. Exception: %s %s', type(e), str(e))
 
 try:
-    import aioredis
+    from redis import asyncio as aioredis
     HAS_ASYNC_REDIS = True
 
 
     async def connect_redis_async(**rd_config) -> aioredis.Redis:
         from privex.helpers.common import extract_settings
         cf = extract_settings('REDIS_', settings, merge_conf=dict(rd_config))
-        _addr = f"redis://{cf.pop('host', 'localhost')}:{cf.pop('port', 6379)}"
-        return await aioredis.create_redis_pool(
-            address=_addr, **cf
-        )
-
+        return await aioredis.Redis(host=cf.pop('host', 'localhost'), port=cf.pop('port', 6379), **cf)
 
     async def get_redis_async(new_connection=False, thread_id=None, **rd_config) -> aioredis.connection:
         """
@@ -342,8 +338,7 @@ try:
                     continue
                 log.debug("Closing aioredis for thread ID %s", t_id)
                 try:
-                    rd.close()
-                    await rd.wait_closed()
+                    await rd.aclose()
                 except RuntimeError as err:
                     log.warning("[ignored] RuntimeError while closing aioredis (thread %s): %s - %s", thread_id, type(err), str(err))
                 except Exception:
@@ -353,8 +348,7 @@ try:
         rd = _get_threadstore('aioredis', 'NOT_FOUND', thread_id=thread_id)
         if rd != 'NOT_FOUND':
             try:
-                rd.close()
-                await rd.wait_closed()
+                await rd.aclose()
             except RuntimeError as err:
                 log.warning("[ignored] RuntimeError while closing aioredis (thread %s): %s - %s", thread_id, type(err), str(err))
             clean_threadstore(thread_id=thread_id, name='aioredis')

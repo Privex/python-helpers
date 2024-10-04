@@ -1291,9 +1291,9 @@ def almost(compare: NumberStr, *numbers: NumberStr, tolerance: NumberStr = Decim
     return True
 
 
-IS_XARGS = re.compile('^\*([a-zA-Z0-9_])+$')
+IS_XARGS = re.compile(r'^\*([a-zA-Z0-9_])+$')
 """Pre-compiled regex for matching catch-all positional argument parameter names like ``*args``"""
-IS_XKWARGS = re.compile('^\*\*([a-zA-Z0-9_])+$')
+IS_XKWARGS = re.compile(r'^\*\*([a-zA-Z0-9_])+$')
 """Pre-compiled regex for matching catch-all keyword argument parameter names like ``**args``"""
 T_PARAM = inspect.Parameter
 """Type alias for :class:`inspect.Parameter`"""

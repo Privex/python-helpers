@@ -16,7 +16,7 @@ try:
     from privex.helpers.extras.attrs import *
     HAS_ATTRS = True
     __all__ += ['AttribDictable']
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     log.debug('privex.helpers.extras __init__ failed to import "attrs", not loading attrs library helpers')
 
 try:
