@@ -44,4 +44,4 @@ X11 / MIT License
 
 """
 name = 'helpers'
-VERSION = '3.2.1'
+VERSION = '3.3.0'
