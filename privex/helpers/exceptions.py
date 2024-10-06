@@ -24,6 +24,10 @@ the standard base exceptions in Python, and are commonly used across our project
 """
 
 
+#####
+# Base exception classes, which are either intended to be subclassed, or otherwise used to group certain kind(s) of
+# exceptions under one parent exception type.
+#####
 class PrivexException(Exception):
     """Base exception for all custom Privex exceptions"""
     pass
@@ -34,17 +38,27 @@ class NotFound(Exception):
     pass
 
 
-class NestedContextException(PrivexException):
-    """
-    Raised by a context manager when there's a conflict while nesting multiple ``with xxx as y`` blocks - for example
-    if there's too many nested ``with`` layers.
-    """
+#####
+# Generic common "x not found" exceptions
+#####
+class PageNotFound(NotFound): pass
+
+
+class HandlerNotFound(NotFound): pass
+
+
+class ObjectNotFound(NotFound): pass
+
+
+class UserNotFound(NotFound): pass
+
+
+class ItemNotFound(NotFound): pass
 
 
 #####
 # Exceptions related to DNS (domain, or individual record errors)
 #####
-
 class BaseDNSException(PrivexException):
     """Base exception for DNS-related exceptions"""
     pass
@@ -79,6 +93,19 @@ class InvalidDNSRecord(BaseDNSException):
     pass
 
 
+class ReverseDNSNotFound(PrivexException, NotFound):
+    """Raised when a given IP address does not have a reverse DNS set"""
+    pass
+
+
+class InvalidHost(PrivexException, ValueError):
+    """Raised when a passed IP address or hostname/domain is invalid."""
+    pass
+
+
+#####
+# Exceptions related to caching
+#####
 class CacheNotFound(PrivexException, NotFound):
     """
     Thrown when a cache key is requested, but it doesn't exist / is expired.
@@ -104,6 +131,9 @@ class NetworkUnreachable(PrivexException):
     """
 
 
+#####
+# Exceptions related to cryptography (de/encryption / hashing / etc.)
+#####
 class EncryptionError(PrivexException):
     """Raised when something went wrong attempting to encrypt or decrypt a piece of data"""
     pass
@@ -120,13 +150,9 @@ class InvalidFormat(EncryptionError):
     """
 
 
-class SysCallError(PrivexException):
-    """
-    Raised when an error appears to have been returned after calling an external command
-    (e.g. via :class:`subprocess.Popen`)
-    """
-
-
+#####
+# Exceptions related to GeoIP
+#####
 class GeoIPException(PrivexException):
     pass
 
@@ -139,16 +165,9 @@ class GeoIPAddressNotFound(GeoIPException, NotFound):
     pass
 
 
-class ReverseDNSNotFound(PrivexException, NotFound):
-    """Raised when a given IP address does not have a reverse DNS set"""
-    pass
-
-
-class InvalidHost(PrivexException, ValueError):
-    """Raised when a passed IP address or hostname/domain is invalid."""
-    pass
-
-
+#####
+# Exceptions related to threading (including locks/mutexes, events, queues, etc.)
+#####
 class LockConflict(PrivexException):
     """
     Raised when attempting to acquire a lock with a :class:`threading.Lock` or :class:`asyncio.Lock`, and the lock object
@@ -171,6 +190,22 @@ class EventWaitTimeout(PrivexException):
     """
 
 
+#####
+# Other exceptions which don't (yet) fit into a category
+#####
 class ValidatorNotMatched(PrivexException):
     pass
 
+
+class NestedContextException(PrivexException):
+    """
+    Raised by a context manager when there's a conflict while nesting multiple ``with xxx as y`` blocks - for example
+    if there's too many nested ``with`` layers.
+    """
+
+
+class SysCallError(PrivexException):
+    """
+    Raised when an error appears to have been returned after calling an external command
+    (e.g. via :class:`subprocess.Popen`)
+    """

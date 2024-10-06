@@ -57,6 +57,8 @@ def _env_bool(v, d) -> bool: return _is_true(env(v, d))
 def _env_int(v, d) -> int: return int(env(v, d))
 
 
+THREAD_DEBUG: bool = _env_bool('THREAD_DEBUG', False)
+
 ########################################
 #                                      #
 #       Cache Module Settings          #

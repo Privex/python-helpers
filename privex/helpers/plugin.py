@@ -30,17 +30,21 @@ how to override the settings if the defaults don't work for you.
 
 
 """
+import abc
+import functools
+import inspect
 import logging
 import threading
+from builtins import function
 from os import path
-from typing import Any, Union, Optional, Generator, Tuple, Dict
+from typing import Any, Callable, Union, Optional, Generator, Tuple, Dict
 
 from privex.helpers.collections import DictObject
 
 from privex.helpers import settings
-from privex.helpers.types import T
+from privex.helpers.types import CONTINUE, NO_RESULT, STOP, T
 from privex.helpers.common import empty_if, empty
-from privex.helpers.exceptions import GeoIPDatabaseNotFound
+from privex.helpers.exceptions import GeoIPDatabaseNotFound, HandlerNotFound
 
 log = logging.getLogger(__name__)
 
@@ -701,5 +705,103 @@ except ImportError:
 
 
 
+class BaseErrorManager(type):
+    def __new__(cls, *args, **kwargs):
+        pass
 
+
+from privex.helpers.collections import dataclass, field, DictDataClass
+
+
+@dataclass
+class ErrorExtraData(DictDataClass):
+    name: Optional[str] = None
+    returned: Union[Any, NO_RESULT] = NO_RESULT
+    ignore: Union[list, tuple, set] = field(default_factory=tuple)
+    fail: Union[list, tuple, set] = field(default_factory=tuple)
+    retry: Union[list, tuple, set] = field(default_factory=tuple)
+    raw_data: Union[dict, DictObject] = field(default_factory=DictObject, repr=False)
+
+
+ErrorHandlerFunction = Callable[
+    [Optional[Union[Exception, BaseException]], function, "ErrorManager", ErrorExtraData, ...],
+    Union[CONTINUE, STOP]
+]
+"""
+
+* ``exc``    (1) - The exception :class:`.Exception` that was raised (if any). ``None`` if no exception occurred.
+* ``func``   (2) - If known, a reference to the function, for access to information such as the name of the function
+                   that the error was raised from, the name of the class the function belongs to (if it's a class method),
+                   and the arguments that the function takes.
+* ``mgr``    (3) - The :class:`.ErrorManager` (or child class) instance which caught the error and is calling your
+                   handler function.
+* ``exdata`` (4) - Any extra data/metadata as a :class`.ErrorExtraData` object, such as the custom "name" for the raising function
+                   set on the wrapper arguments, any data which was returned by the function, which exceptions were requested
+                   to be ignored, to immediately fail on, and/or retry on - along with any additional arbitrary data which was
+                   passed to the wrapper or somehow emitted by the function.
+"""
+ErrorHandler = Union[ErrorHandlerFunction, "ErrorManagerHandler"]
+
+
+class ErrorManager(metaclass=BaseErrorManager):
+    ExtraData = ErrorExtraData
+
+    handlers: Dict[str, ErrorHandler]
+    """
+    A map of error handler function custom names mapped to their function
+    """
+    def __init__(self, always_emit=False, name="Error Manager", **kwargs):
+        self.name = name
+        self.always_emit = always_emit
+        self.handlers = kwargs.get('handlers', {})
+        self.handler_order = kwargs.get('handler_order', list(self.handlers.keys()))
+
+    def wrap(self, ignore=None, fail=None, retry=None, **kwargs):
+        def _outer(fn):
+            @functools.wraps(fn)
+            def wrapper(*args, **kwargs):
+                pass
+            return wrapper
+        return _outer
+    
+    def register(self, fn: ErrorHandler, name: str = None, index: int = -1, **kwargs):
+        h: Union[ErrorManagerHandler, ErrorHandlerFunction] = fn
+        if inspect.isclass(fn):
+            h: ErrorManagerHandler = h(mgr=self)
+        elif isinstance(fn, ErrorManagerHandler):
+            fn.error_mgr = self
+        elif inspect.isfunction(fn) or inspect.ismethod(fn):
+            pass
+        else:
+            raise ValueError(f"ERROR: Handler passed to {self.__class__.__name__}.register is neither an ErrorManagerHandler "
+                             f"class/instance, nor a callable function/method. Not a valid handler: {fn!r} (str: {fn!s})")
+        
+        
+            
+    
+    def call_handler(
+            self, handler: str, exc: Exception = None, func: function = None, exdata: ExtraData = None
+    ) -> Optional[Union[CONTINUE, STOP]]:
+        if handler not in self.handlers:
+            if handler.lower() not in self.handlers:
+                raise HandlerNotFound(f"Error handler {handler!r} not found in {self.__class__.__name__}.handlers ...")
+            handler = handler.lower()
+        h = self.handlers[handler]
+        if isinstance(h, ErrorManagerHandler):
+            return h.handle(exc, func, exdata)
+        return h(exc, func, self, exdata)
+        
+        
+
+
+class ErrorManagerHandler(abc.ABC):
+    error_mgr: ErrorManager
+
+    def __init__(self, mgr: ErrorManager = None, **kwargs):
+        self.error_mgr = mgr
+
+    @abc.abstractmethod
+    def handle(self, exc: Exception, func: function, exdata: ErrorManager.ExtraData) -> Union[CONTINUE, STOP]:
+        raise NotImplementedError(f"{self.__class__.__name__} must implement .handle()!")
+        # return CONTINUE
 

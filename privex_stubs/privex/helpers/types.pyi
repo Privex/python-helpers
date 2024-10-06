@@ -17,6 +17,7 @@ CL = TypeVar('CL', type, Callable)
 USE_ORIG_VAR: Any
 NO_RESULT: Any
 STRBYTES = Union[bytes, str]
+EXSTRBYTES = Union[STRBYTES, Exception]
 AUTO: Any
 AUTOMATIC: Any
 AUTO_DETECTED: Any

@@ -136,6 +136,22 @@ For RSA keys, we can also do encryption and decryption of small messages::
 
 
 """
-from privex.helpers.crypto.EncryptHelper import EncryptHelper
-from privex.helpers.crypto.base import is_base64, auto_b64decode
-from privex.helpers.crypto.KeyManager import KeyManager, Format
+import warnings
+
+try:
+    from privex.helpers.crypto.EncryptHelper import EncryptHelper
+except ImportError as e:
+    warnings.warn(f"Failing to import privex.helpers.crypto.EncryptHelper - exception is: {type(e)} - {str(e)}")
+try:
+    from privex.helpers.crypto.base import is_base64, auto_b64decode
+except ImportError as e:
+    warnings.warn(f"Failing to import privex.helpers.crypto.base - exception is: {type(e)} - {str(e)}")
+try:
+    from privex.helpers.crypto.KeyManager import KeyManager, Format
+except ImportError as e:
+    warnings.warn(f"Failing to import privex.helpers.crypto.KeyManager - exception is: {type(e)} - {str(e)}")
+
+try:
+    from privex.helpers.crypto.hash import *
+except ImportError as e:
+    warnings.warn(f"Failing to import privex.helpers.crypto.hash - exception is: {type(e)} - {str(e)}")

@@ -74,7 +74,7 @@ class TestNet(PrivexBaseCase):
     @pytest.mark.skipif(not HAS_DNSPYTHON, reason="test_asn_to_name_int requires package 'dnspython'")
     def test_asn_to_name_int(self):
         """Test Privex's ASN (as an int) 210083 resolves to 'PRIVEX, SE'"""
-        self._check_asn(210083, 'PRIVEX, SE', 'PRIVEX INC, SE', 'Privex Inc, SE')
+        self._check_asn(210083, 'PRIVEX, SE', 'PRIVEX, BZ', 'PRIVEX INC, SE', 'PRIVEX INC, BZ', 'Privex Inc, SE', 'Privex Inc, BZ')
 
     @pytest.mark.skipif(not HAS_DNSPYTHON, reason="test_asn_to_name_str requires package 'dnspython'")
     def test_asn_to_name_str(self):

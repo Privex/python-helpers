@@ -21,6 +21,7 @@ Common functions and classes that don't fit into a specific category
     Copyright 2019     Privex Inc.   ( https://www.privex.io )
 
 """
+import decimal
 import inspect
 import math
 import os
@@ -723,9 +724,24 @@ def extract_type(tp: Union[type, callable, object], **kwargs) -> Optional[Union[
     return tp
 
 
+ROUNDING_MAP = dict(
+    ceil=decimal.ROUND_CEILING, ceiling=decimal.ROUND_CEILING, ROUND_CEILING=decimal.ROUND_CEILING,
+    up=decimal.ROUND_UP, UP=decimal.ROUND_UP, ROUND_UP=decimal.ROUND_UP,
+    down=decimal.ROUND_DOWN, DOWN=decimal.ROUND_DOWN, ROUND_DOWN=decimal.ROUND_DOWN,
+    floor=decimal.ROUND_FLOOR, FLOOR=decimal.ROUND_FLOOR, ROUND_FLOOR=decimal.ROUND_FLOOR,
+    half_up=decimal.ROUND_HALF_UP, HALF_UP=decimal.ROUND_HALF_UP, ROUND_HALF_UP=decimal.ROUND_HALF_UP,
+    half_down=decimal.ROUND_HALF_DOWN, HALF_DOWN=decimal.ROUND_HALF_DOWN, ROUND_HALF_DOWN=decimal.ROUND_HALF_DOWN,
+    half_even=decimal.ROUND_HALF_EVEN, HALF_EVEN=decimal.ROUND_HALF_EVEN, ROUND_HALF_EVEN=decimal.ROUND_HALF_EVEN,
+    up05=decimal.ROUND_05UP, UP05=decimal.ROUND_05UP, ROUND_05UP=decimal.ROUND_05UP,
+    even=decimal.ROUND_HALF_EVEN,
+)
+
+ROUNDING_MAP = {**ROUNDING_MAP, '05up': decimal.ROUND_05UP, '05UP': decimal.ROUND_05UP}
+
+
 def dec_round(amount: Decimal, dp: int = 2, rounding=None) -> Decimal:
     """
-    Round a Decimal to x decimal places using ``quantize`` (``dp`` must be >= 1 and the default dp is 2)
+    Round a Decimal to x decimal places using ``quantize`` (``dp`` must be >= 0 and the default dp is 2)
 
     If you don't specify a rounding option, it will use whatever rounding has been set in :py:func:`decimal.getcontext`
     (most python versions have this default to ``ROUND_HALF_EVEN``)
@@ -736,6 +752,11 @@ def dec_round(amount: Decimal, dp: int = 2, rounding=None) -> Decimal:
         >>> x = Decimal('1.9998')
         >>> dec_round(x, 3)
         Decimal('2.000')
+        >>> dec_round(Decimal('3.141592'), 3)
+        Decimal('3.142')
+        >>> dec_round(Decimal('3.141592'), 2)
+        >>> dec_round(Decimal('19.23'), 0)
+        Decimal('19')
 
     Custom Rounding as an argument:
 
@@ -755,11 +776,16 @@ def dec_round(amount: Decimal, dp: int = 2, rounding=None) -> Decimal:
     :return Decimal rounded: The rounded Decimal amount
     """
     dp = int(dp)
-    if dp <= 0:
-        raise ArithmeticError('dec_round expects dp >= 1')
+    if dp < 0:
+        raise ArithmeticError('dec_round expects dp >= 0')
     rounding = getcontext().rounding if not rounding else rounding
-    dp_str = '.' + str('0' * (dp - 1)) + '1'
-    return Decimal(amount).quantize(Decimal(dp_str), rounding=rounding)
+    rounding = ROUNDING_MAP[rounding] if rounding in ROUNDING_MAP else rounding
+    dp_str = '0' if dp == 0 else ('.' + str('0' * (dp - 1)) + '1')
+    try:
+        return Decimal(amount).quantize(Decimal(dp_str), rounding=rounding)
+    except TypeError as ex:
+        if 'values for rounding are' in str(ex).lower():
+            raise
 
 
 def chunked(iterable, n):

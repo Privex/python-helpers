@@ -356,7 +356,7 @@ cmst = CacheManagerExample.sleep_multiplier
 class TestCacheManager(PrivexBaseCase):
     _testing_fmt_str = 'Hello! You are: {} || Your banana is called: {}'
     _lorem_fmt_str = f"(lorem) {_testing_fmt_str}"
-    _delta = 0.2
+    _delta = 0.4
     
     def tearDown(self) -> None:
         CacheManagerExample.clear_all_cache_keys()

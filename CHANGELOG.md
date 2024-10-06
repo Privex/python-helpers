@@ -1,5 +1,93 @@
 -----------------------------------------------------------------------------------------------------------------------
 
+3.3.0 - Added `privex.helpers.crypto.hash` module + `dump_obj` in collections
+====================================================================================================================
+
+-----------------------------------------------------------------------------------------------------------------------
+Author: Chris (Someguy123)
+Date:   Mon Apr 7 08:50 PM 2020 +0000
+
+- **privex.helpers.crypto.hash**
+    - The `crypto.hash` module is newly added, it contains a variety of functions, classes, and variables
+      designed to ease working with hashing, as well as aiding efficiency through the use of AsyncIO,
+      threading, and block hashing (hashing small blocks at a time to avoid memory leaks).
+
+    - A variety of small wrapper functions that use :class:`.XHash` for hashing, including
+      `.md5`, `.sha1`, `.sha256`, `.whirlpool`,`.ripemd160`, and others.
+
+    - `.hashwrap` is used to generate wrapper functions like`.md5` which use `.XHash` for hashing.
+
+    - `.HASH_MAP` is a dictionary mapping known hash algorithms, to wrapper functions that accept a single positional 
+      argument (the data to be hashed), and kwargs to forward to XHash.
+
+    - `.XHash` is a class based off of hashlib's `._Hash` class, designed to act as an object representing a hash, and
+      allowing for easy conversion between string hexdumps, the raw underlying bytes that the hash is made of, base64/32
+      representation, and integer encoding.
+
+      It includes various classmethods that can be used to create a :class:`.XHash` instance from a string 
+      or bytestring, and hashing it.
+
+    - `.calc_hash` is an AsyncIO function for hashing a simple :class:`.str` / :class:`.bytes` string
+
+    - `.calc_hash_sync` is a synchronous wrapper function for using`.calc_hash` in non-async contexts
+
+    - `.calc_hash_blocks` is an AsyncIO function for efficiently hashing a large amount of data, using a file handle, and
+  reading + hashing small blocks at a time to avoid guzzling RAM.
+
+    - `.calc_hash_file` is an AsyncIO function for efficiently hashing a file on your disk, it's effectively a wrapper for
+      `.calc_hash_blocks` for use with files on your filesystem.
+
+    - `.calc_hashes_thread` is an AsyncIO + threaded function for quickly hashing multiple `.str` / `.bytes`
+      strings at the same time.
+
+    - `.hash_files_threads` is an AsyncIO + threaded function for quickly hashing multiple files at the same time, using the
+      efficient block hashing via `.calc_hash_blocks`
+      
+- **privex.helpers.collections**
+    - Added new `.dump_obj` function, which is designed to allow easily converting the data stored within a class
+      or object instance, into a versatile and portable `dict`.
+    - Added `.from_special` and `.from_object` to `DictDataClass`, which are based on `.dump_obj` - they allow you to
+      initialise a dataclass using attributes/keys extracted from a class / object.
+
+- Other stuff
+    - Added `EXSTRBYTES` to `.types` module - "Alias for ``Union[STRBYTES, Exception]`` (string, bytes, or exception)"
+    - Refactored temporary file auto-creation, deletion, etc. for unit tests into the base class `TempFileBase`
+      in `tests.base`.
+    - The unit test class `TestGit` in `tests.test_extras` has been refactored to use `TempFileBase` for it's temporary
+      file management
+    - Added new test class `TestHashing` to `tests.test_extras`, which is a test suite for the new `helpers.crypto.hash`
+      module, and makes use of the newly added `TempFileBase` base class to manage it's temporary files.
+    - Added `THREAD_DEBUG` setting to `privex.helpers.settings` - intended for use to be able to enable/disable very
+      verbose debug logging from functions/classes that handle threading.  
+
+
+-----------------------------------------------------------------------------------------------------------------------
+
+3.2.1 - Adjust `__init__.py` for setup.py to work without deps
+====================================================================================================================
+
+-----------------------------------------------------------------------------------------------------------------------
+
+Author: Chris (Someguy123)
+Date:   Mon Nov 2 04:31 AM 2020 +0000
+
+Due to some imports that weren't wrapped in try/except inside of `__init__.py`, the `setup.py` file was unable to function due to an ImportError raised
+when trying to import the VERSION variable.
+
+To ensure robustness when importing `privex.helpers`, all module imports inside of `privex/helpers/__init__.py` - apart from `privex.helpers.common`,
+are now wrapped inside of a try/except block, ensuring at least *partial* functionality if any module fails to load for whatever reason.
+
+Additionally, to prevent any risk of `setup.py` failing to function when no dependencies are installed, `VERSION` has been relocated to `privex.helpers.version.VERSION`,
+however, `__init__.py` imports `version.VERSION` and makes it available as `VERSION`, as to not break compatibility with any existing code / systems which expect the
+package version to be found inside of `__init__.py`
+
+The `setup.py` file now only imports from privex.helpers: `extras_require` from `privex.helpers.setuppy.common` (no extra dependencies), and `VERSION` from `privex.helpers.version`
+
+Both `privex.helpers.setuppy.commands` and `privex.helpers.settings` are still imported inside of `setup.py`, but kept within a safe try/except block, as they're not essential for
+setup.py to function
+
+-----------------------------------------------------------------------------------------------------------------------
+
 3.2.0 - Added MemcachedCache + privex.helpers.cache.extra, plus various other additions
 ====================================================================================================================
 

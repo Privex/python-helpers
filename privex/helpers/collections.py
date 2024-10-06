@@ -195,6 +195,7 @@ import inspect
 import os
 import sys
 import types
+from enum import Enum
 from os.path import dirname, abspath
 from collections import namedtuple, OrderedDict
 from json import JSONDecodeError
@@ -919,6 +920,9 @@ except (ImportError, ImportWarning, AttributeError, KeyError) as e:
     dataclass = dataclasses.dataclass
     field = dataclasses.field
 
+dataclass = dataclass
+field = field
+
 
 class DictObject(dict):
     """
@@ -1440,7 +1444,7 @@ class Dictable:
         return getattr(self, key) if key in names else fallback
 
     @classmethod
-    def from_dict(cls, env):
+    def from_dict(cls: Union[Type["Dictable"], Type[T]], env) -> T:
         # noinspection PyArgumentList
         return cls(**{
             k: v for k, v in env.items()
@@ -1451,6 +1455,134 @@ class Dictable:
     def from_list(cls: Type[T], obj_list: Iterable[dict]) -> Generator[T, None, None]:
         for o in obj_list:
             yield cls.from_dict(o)
+
+
+def _iter_attr_to_dict(obj, xattrs: Iterable[Any], check_attrs=True, strip_private=True) -> dict:
+    """
+    Extracts attributes from a class/object into a dictionary.
+    
+    Used by :func:`.dump_obj` via :attr:`.INST_DICT_MAP` for extracting a class/object's attributes or keys
+    into a dictionary for serialization, duplication, or other purposes.
+    
+    :param object|Type[Any]|Any obj: A class or object/instance to extract attributes from.
+    :param iter|list|tuple|set xattrs: Any iterable object containing attribute/key names to be extracted from ``obj``
+    :param bool check_attrs:           When true, checks that each attribute requested in ``xattrs`` actually exists on ``obj``
+                                       using :func:`.hasattr`
+    :param bool strip_private:         When true, skips attributes/keys that start with ``__`` (meaning they're private)
+    :return dict extracted:            A :class:`.dict` containing the extracted attribute names and their values.
+    """
+    return {
+        k: getattr(obj, k) for k in xattrs
+        if (not check_attrs or hasattr(obj, k)) and (not strip_private or not _ispriv(k))
+    }
+
+
+def _ispriv(key: str) -> bool: return key.startswith('__')
+
+
+AnyTypeObj = Union[Type[Any], object, Any]
+ObjToDictFunc = Callable[[AnyTypeObj, bool], dict]
+
+INST_DICT_MAP: Dict[str, ObjToDictFunc] = {
+    '__dict__': lambda obj, stpriv=True: {k: v for k, v in dict(obj.__dict__).items() if not stpriv or not _ispriv(k)},
+    '__slots__': lambda obj, stpriv=True: _iter_attr_to_dict(obj, obj.__slots__, strip_private=stpriv),
+    '__dir__': lambda obj, stpriv=True: _iter_attr_to_dict(obj, obj.__dir__(), strip_private=stpriv),
+    '__iter__': lambda obj, stpriv=True: {k: v for k, v in dict(obj).items() if not stpriv or not _ispriv(k)},
+}
+"""
+A map of attribute extraction methods - to small lambda functions which handle the extraction.
+
+Used by :func:`.dump_obj` and :meth:`.DictDataClass.from_special`
+"""
+
+
+class ObjDictEnum(Enum):
+    """
+    Contains enumerations for use with :func:`.dump_obj` and :meth:`.DictDataClass.from_special`
+    """
+    dict = DICT = '__dict__'
+    slots = SLOTS = '__slots__'
+    dir = DIR = '__dir__'
+    iter = ITER = '__iter__'
+            
+
+def dump_obj(
+    obj: AnyTypeObj, conv: Union[str, ObjDictEnum, ObjToDictFunc] = '__dict__',strip_private: bool = True
+) -> dict:
+    """
+    Extracts attributes from classes/objects/etc. into a plain dictionary, with support for standard objects (using ``__dict__``),
+    slotted classes (using ``__slots__``), and other types of classes/objects via ``__dir__`` or ``__iter__``.
+    
+    Useful for both attempting to serialize classes/objects for output, as well as copying the contents from a class/object
+    for either creating duplicate instances, or for migrating the object's data into another class/object which can handle
+    the same data formats/layout.
+    
+    Most classes and objects should be dumpable using the default ``__dict__`` extractor, while efficiency oriented slotted classes
+    can be dumped using ``__slots__``. If neither extractor extracts the keys/attributes you desire, then you may try the
+    special case extractors ``__dir__`` or ``__iter__``.
+    
+    Example::
+    
+        >>> class Example: pass
+        >>>
+        >>> Example.hello, Example.world = 'lorem ipsum', 'dolor'
+        >>> dump_obj(Example)
+        {'hello': 'lorem ipsum', 'world': 'dolor'}
+        
+        Hello(hello='lorem ipsum', world='dolor', example=None, foo=0)
+    
+    You can pass ``conv`` as both a string (key in :attr:`.INST_DICT_MAP`), a string key/value of :class:`.ObjDictEnum`,
+    or an actual Enum enumeration object e.g. :attr:`.ObjDictEnum.dict` like so::
+    
+        >>> dump_obj(Example, '__dict__')
+        {'hello': 'lorem ipsum', 'world': 'dolor'}
+        >>> dump_obj(Example, 'dict')
+        {'hello': 'lorem ipsum', 'world': 'dolor'}
+        >>> dump_obj(Example, ObjDictEnum.dict)
+        {'hello': 'lorem ipsum', 'world': 'dolor'}
+    
+    To dump classes which use ``__slots__``, you need to specify the converter (conv) ``__slots__``, ``slots``,
+    or :attr:`.ObjDictEnum.slots` - like so::
+    
+        >>> class Slotted:
+        ...     __slots__ = 'foo', 'bar'
+        >>> s = Slotted()
+        >>> s.foo = 12345
+        >>> dump_obj(s, '__slots__')
+        {'foo': 12345}
+    
+    Supported class/object dumping methods:
+    
+      * ``__dict__``  - The default - dumps a class or object instance using the standard ``.__dict__`` private class attribute.
+      
+      * ``__slots__`` - Slotted classes need to be handled differently than normal classes/instances, thus you need to specify
+                        ``__slots__`` / ``slots`` / :attr:`.ObjDictEnum.slots` to properly dump slotted classes
+                        
+      * ``__dir__``   - This is an alternative to ``__dict__``, which dumps classes using the output of ``.__dir__()`` to detect
+                        the attribute names to extract.
+        
+      * ``__iter__``  - This method uses :class:`.dict` to convert the object, which uses ``.__iter__`` to extract keys and values
+                        as tuple pairs. This method may be best when dealing with classes/objects designed to store data similar to
+                        the native :class:`.dict` / :class:`.list` etc.
+
+    :param Type[Any]|object|Any obj: A class or object to dump into a dictionary
+    :param str|callable|ObjDictEnum conv: A string key of :attr:`.INST_DICT_MAP` / :class:`.ObjDictEnum` , an enumeration attribute
+                                          of :class:`.ObjDictEnum` , or a callable function to use to handle dumping the object
+                                          in a similar fashion to the ones defined in :attr:`.INST_DICT_MAP`
+    :param bool strip_private:       When ``True``, attributes starting with ``__`` are skipped from dumping, which can be useful,
+                                     since a lot of private attributes cannot be easily copied or accessed outside of the object.
+    :return:
+    """
+    if isinstance(conv, ObjDictEnum):
+        conv = conv.value
+    if isinstance(conv, str):
+        if conv not in INST_DICT_MAP:
+            try:
+                conv = ObjDictEnum[conv].value
+            except ValueError:
+                conv = ObjDictEnum(conv).value
+        conv = INST_DICT_MAP[conv]
+    return conv(obj, strip_private)
 
 
 class DictDataClass(Dictable):
@@ -1694,13 +1826,129 @@ class DictDataClass(Dictable):
         return super().__setattr__(key, value)
     
     @classmethod
-    def from_dict(cls: Type[dataclass], obj):
+    def from_dict(cls: Union[Type["dataclass"], Type[T]], obj) -> T:
         names = set([f.name for f in dataclasses.fields(cls)])
         clean = {k: v for k, v in obj.items() if k in names}
         if 'raw_data' in names:
             clean['raw_data'] = DictObject(clean.get('raw_data')) if 'raw_data' in clean else DictObject(obj)
         return cls(**clean)
     
+    @classmethod
+    def from_special(
+        cls: Union[Type["dataclass"], Type[T]], obj: AnyTypeObj,
+        conv: Union[str, ObjToDictFunc, ObjDictEnum] = '__dict__', strip_private: bool = True, **kwargs
+    ) -> T:
+        """
+        Constructs your dataclass using attributes/keys extracted from an arbitrary class/object.
+        
+        See :func:`.dump_obj` for additional documentation, as that function handles most of the work done in this method.
+        
+        Example 1 - constructing a dataclass using attributes extracted from a class::
+        
+            >>> @dataclass
+            >>> class Hello(DictDataClass):
+            >>>     hello: str = None
+            >>>     world: str = None
+            >>>     example: str = None
+            >>>     foo: int = 0
+            >>>
+            >>> class Example: pass
+            >>>
+            >>> Example.hello, Example.world = 'lorem ipsum', 'dolor'
+            >>> Hello.from_special(Example, '__dict__')
+            Hello(hello='lorem ipsum', world='dolor', example=None, foo=0)
+        
+        Example 2 - constructing from attributes extracted from a slotted class::
+        
+            >>> class Slotted:
+            ...     __slots__ = 'foo', 'bar'
+            >>> s = Slotted()
+            >>> s.foo = 12345
+            >>> Hello.from_special(s, '__slots__')
+            Hello(hello=None, world=None, example=None, foo=12345)
+
+
+        :param object|Type[Any]|Any obj: A class / object to dump into a dict, and attempt to construct the dataclass with.
+        :param str|callable|ObjDictEnum conv: A string key of :attr:`.INST_DICT_MAP` / :class:`.ObjDictEnum` , an enumeration attribute
+                                              of :class:`.ObjDictEnum` , or a callable function to use to handle dumping the object
+                                              in a similar fashion to the ones defined in :attr:`.INST_DICT_MAP`
+        :param bool strip_private:       When ``True``, attributes starting with ``__`` are skipped from dumping, which can be useful,
+                                         since a lot of private attributes cannot be easily copied or accessed outside of the object.
+        :return T|DictDataClass inst:    An instance of your dataclass, constructed using the attributes extracted from ``obj``
+        """
+        dumped = dump_obj(obj, conv, strip_private=strip_private)
+        return cls.from_dict(dumped)
+    
+    @classmethod
+    def from_object(cls: Union[Type["dataclass"], Type[T]], obj: Union[Type[Any], object], strip_private=True) -> T:
+        """
+        Construct this dataclass using attributes extracted from an object instance.
+        
+        If you can't extract an object's attributes using this method, try using :meth:`.from_special` which gives you
+        control over which method is used to extract the attributes from the object.
+        
+        **Example Usage**::
+            
+            >>> # First we create a dataclass which inherits DictDataClass
+            >>> from privex.helpers import DictDataClass
+            >>> from dataclasses import dataclass
+            >>>
+            >>> @dataclass
+            >>> class Hello(DictDataClass):
+            >>>     hello: str = None
+            >>>     world: str = None
+            >>>     example: str = None
+            >>> # Then we create a blank example class that we can stick some attributes onto.
+            >>> class Lorem:
+            >>>     pass
+            >>>
+            >>> l = Lorem()
+            >>> # On a default empty class instance, we can set any arbitrary attributes we want
+            >>> l.hello = "this is an example"
+            >>> l.example = "of object attribute extraction"
+            >>> # Now if we use .from_object() with the example instance of Lorem,
+            >>> # we can see the attributes 'hello' and 'example' were read from Lorem and into the Hello dataclass.
+            >>> h = Hello.from_object(l)
+            >>> print(h)
+            Hello(hello='this is an example', world=None, example='of object attribute extraction')
+            >>> print(h.hello)
+            'this is an example'
+        
+        
+        :param any obj:         Any class, class instance, or arbitrary object that you want to import into a dataclass.
+                                The type/object must support either ``__dict__``, ``__slots__``, ``__dir__``, or ``__iter__()``
+                                for it to be possible to list and extract it's attributes into a new dataclass.
+         
+        :param bool strip_private: (Default: ``True``) When ``True``, attributes that start with ``__`` will be simply be skipped,
+                                   preventing problems where e.g. accessing certain private attributes' contents can cause issues.
+                                   
+        :raises ValueError:        When ``obj`` has no usable attribute for listing available attributes: ``__dict__``, ``__slots__``,
+                                   ``__dir__``, or ``__iter__()``
+                                   
+        :return T inst:            An instance of the class from which you called this method from.
+        """
+        if hasattr(obj, '__dict__'):
+            xdict = dict(obj.__dict__)
+            cleandict = {k: v for k, v in xdict.items() if not strip_private or not k.startswith('__')}
+        elif hasattr(obj, '__slots__'):
+            xslots = obj.__slots__
+            cleandict = {k: getattr(obj, k) for k in xslots if not strip_private or not k.startswith('__')}
+        elif hasattr(obj, '__dir__'):
+            xdir = obj.__dir__()
+            cleandict = {k: getattr(obj, k) for k in xdir if not strip_private or not k.startswith('__')}
+        elif hasattr(obj, '__iter__'):
+            # noinspection PyTypeChecker
+            xdict = dict(obj)
+            cleandict = {k: v for k, v in xdict.items() if not strip_private or not k.startswith('__')}
+        else:
+            raise ValueError(
+                f"The passed object '{obj}' does not have __dict__, __slots__, __iter__, nor __dir__() - which means "
+                f"it's not possible to retrieve a list of attributes. An attribute list is required for extracting them "
+                f"into a dictionary for creating an instance of {cls.__name__}"
+            )
+
+        return cls.from_dict(cleandict)
+
 
 DictDataclass = DictDataClass
 
