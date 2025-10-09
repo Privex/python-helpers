@@ -338,7 +338,7 @@ try:
                     continue
                 log.debug("Closing aioredis for thread ID %s", t_id)
                 try:
-                    await rd.aclose()
+                    await rd.close()
                 except RuntimeError as err:
                     log.warning("[ignored] RuntimeError while closing aioredis (thread %s): %s - %s", thread_id, type(err), str(err))
                 except Exception:
@@ -348,7 +348,7 @@ try:
         rd = _get_threadstore('aioredis', 'NOT_FOUND', thread_id=thread_id)
         if rd != 'NOT_FOUND':
             try:
-                await rd.aclose()
+                await rd.close()
             except RuntimeError as err:
                 log.warning("[ignored] RuntimeError while closing aioredis (thread %s): %s - %s", thread_id, type(err), str(err))
             clean_threadstore(thread_id=thread_id, name='aioredis')
