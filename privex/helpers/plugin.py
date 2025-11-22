@@ -255,14 +255,14 @@ try:
                     continue
                 log.debug("Closing redis for thread ID %s", t_id)
                 try:
-                    rd.aclose()
+                    rd.close()
                 except Exception:
                     log.exception("Exception while closing redis for thread ID %s", t_id)
             return clean_threadstore(name='redis', clean_all=True)
     
         rd: Union[str, redis.Redis] = _get_threadstore('redis', 'NOT_FOUND', thread_id=thread_id)
         if rd != 'NOT_FOUND':
-            rd.aclose()
+            rd.close()
             clean_threadstore(thread_id=thread_id, name='redis')
             return True
         return False
